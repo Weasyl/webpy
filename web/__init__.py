@@ -3,7 +3,7 @@
 
 from __future__ import generators
 
-__version__ = "0.37"
+__version__ = "0.37+weasyl.2"
 __author__ = [
     "Aaron Swartz <me@aaronsw.com>",
     "Anand Chitipothu <anandology@gmail.com>"
