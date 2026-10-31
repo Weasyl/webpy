@@ -1,0 +1,73 @@
+name: ci
+on:
+  pull_request:
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+jobs:
+  ci:
+    runs-on: ubuntu-latest
+
+    services:
+      mariadb:
+        image: mysql:8.0
+        ports:
+          - 3306:3306
+        env:
+          MYSQL_ROOT_PASSWORD: root
+        options: --health-cmd "mysqladmin ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+      postgres:
+        image: postgres:latest
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12", "3.13", "3.x", "3.15", "pypy-3.11"]
+
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python-version }}
+          allow-prereleases: true
+      - run: pip install "codespell[toml]" pytest ruff
+      - run: codespell
+      - run: ruff check --output-format=github
+
+      - name: "Install dependent Python modules for testing."
+        run: pip install -r requirements.txt -r test_requirements.txt
+
+      # Use the default MySQL server offered by GitHub Actions.
+      - name: "Generate /tmp/my.cnf"
+        run: echo -e "[client]\nhost=127.0.0.1\nport=3306\nuser=root\npassword='root'" > /tmp/my.cnf
+      - name: "Create MySQL user and database used for testing."
+        run: mysql --defaults-file=/tmp/my.cnf -e "create user 'scott'@'%' identified by 'tiger'; create database webpy; grant all privileges on webpy.* to 'scott'@'%' with grant option;"
+
+      - name: "Create PostgreSQL user and database."
+        run: |
+          createdb -h localhost -U postgres webpy
+          createuser -h localhost -U postgres -d scott
+          psql -h localhost -U postgres -d postgres -c "ALTER USER scott WITH ENCRYPTED PASSWORD 'tiger'"
+          psql -h localhost -U postgres -d postgres -c "ALTER DATABASE webpy OWNER TO scott"
+        env:
+          PGPASSWORD: postgres
+
+      # Run pytest and get detailed output for easy debugging if test failed.
+      # Env variables `WEBPY_DB_` are required for sql db connections.
+      - run: pytest --capture=no --exitfirst --verbose .
+        env:
+          WEBPY_DB_HOST: 127.0.0.1
+          WEBPY_DB_MYSQL_PORT: 3306
+          WEBPY_DB_PG_PORT: 5432
+          WEBPY_DB_NAME: webpy
+          WEBPY_DB_USER: scott
+          WEBPY_DB_PASSWORD: tiger

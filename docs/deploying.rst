@@ -8,9 +8,9 @@ web.py uses `flup`_ library for supporting fastcgi. Make sure it is installed.
 
 .. _flup: http://trac.saddi.com/flup
 
-You just need to make sure you applicaiton file is executable. Make it so by adding the following line to tell the system to execute it using python::
+You just need to make sure you application file is executable. Make it so by adding the following line to tell the system to execute it using python::
 
-    #! /usr/bin/env python
+    #! /usr/bin/env python3
 
 and setting the exeutable flag on the file::
 

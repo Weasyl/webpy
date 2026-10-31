@@ -1,33 +1,35 @@
-#!/usr/bin/env python
+#!/usr/bin/env python3
 """web.py: makes web apps (http://webpy.org)"""
 
-from __future__ import generators
+# ruff: noqa: F401,F403
 
-__version__ = "0.37+weasyl.2"
+from . import (
+    db,
+    debugerror,
+    form,
+    http,
+    httpserver,
+    net,
+    session,
+    template,
+    utils,
+    webapi,
+    wsgi,
+)
+from .application import *
+from .db import *
+from .debugerror import *
+from .http import *
+from .httpserver import *
+from .net import *
+from .utils import *
+from .webapi import *
+from .wsgi import *
+
+__version__ = "0.76"
 __author__ = [
     "Aaron Swartz <me@aaronsw.com>",
-    "Anand Chitipothu <anandology@gmail.com>"
+    "Anand Chitipothu <anandology@gmail.com>",
 ]
 __license__ = "public domain"
 __contributors__ = "see http://webpy.org/changes"
-
-import utils, db, net, wsgi, http, webapi, httpserver, debugerror
-import template, form
-
-import session
-
-from utils import *
-from db import *
-from net import *
-from wsgi import *
-from http import *
-from webapi import *
-from httpserver import *
-from debugerror import *
-from application import *
-from browser import *
-try:
-    import webopenid as openid
-except ImportError:
-    pass # requires openid module
-

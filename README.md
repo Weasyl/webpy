@@ -1,5 +1,12 @@
-web.py is a web framework for Python that is as simple as it is powerful.
+[![pypi](https://img.shields.io/pypi/v/web.py)](https://pypi.org/project/web.py)
+[![python versions](https://img.shields.io/pypi/pyversions/web.py)](https://devguide.python.org/versions)
+[![build status](https://github.com/webpy/webpy/actions/workflows/lint_python.yml/badge.svg)](https://github.com/webpy/webpy/actions/workflows/lint_python.yml)
 
-Visit http://webpy.org/ for more information.
+web.py is a Python web framework that is as simple as it is powerful.
 
-![build status](https://secure.travis-ci.org/webpy/webpy.png?branch=master)
+Visit http://webpy.org for more information.
+
+To install web.py, please run:
+```
+python3 -m pip install web.py
+```

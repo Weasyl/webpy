@@ -1,17 +1,134 @@
 # web.py changelog
 
+## 2023-10-02 0.70
+
+* Remove the cgi module which will be removed in Python 3.13 #773
+* Add support for current versions of CPython
+* Upgrade testing and linting tools
+
+## 2020-11-09 0.62
+
+* Fixed: application.load() assumes ctx.path will be a latin1 string #687
+* Fixed: can not reset session data to same value as initialized. #683
+* Fixed: can not set session expire time. #655
+* Fixed: not export session store `MemoryStore`.
+
+## 2020-06-23 0.61
+
+* setup.py: Add python_requires='>=3.5' #662
+
+## 2020-06-23 0.60
+
+* Python-2 support has been completely dropped. Welcome to Python 3.
+* Fixed: session store `DiskStore` doesn't return correctly if session
+  directory doesn't exist. #652
+* Fixed: incorrect str/bytes type of session data. #644 #645
+* Fixed: `db.query("insert... returning")` fails to commit. #648 #649
+
+## 2020-03-20 0.50
+
+* New session store `MemoryStore`, used to save a session in memory.
+  Should be useful where there are limited fs writes to the disk, like
+  flash memories. #174
+* Fixed: not support `samesite=none`. #592
+* Fixed Python-3 compatibility issues: #574, #576.
+* Support tuple and set in `sqlquote()`.
+* Drop support for SQL driver `pgdb`. It was dead, you cannot even find its
+  website or download link.
+* Drop support for SQL driver `psycopg`. The latest version was released in
+  2006 (14 years ago), please use `psycopg2` instead.
+* Removed function `web.safemarkdown`. if it's used in your application, you
+  can install the `Markdown` module from pypi
+  (https://pypi.org/project/Markdown/), then replace `web.safemarkdown()` by
+  `markdown.markdown()`.
+
+## 2019-09-25 0.40
+
+Note: `0.40` is the last release which supports Python 2. Future releases will
+drop support for Python 2.
+
+Broken backward compatibilities:
+
+- `web.utils.utf8` and `web.utf8` (it's an alias of `web.utils.utf8`) were
+  removed. Please replace them by `web.safestr` instead.
+- `db.select()` doesn't support specifying offset in `limit` like this:
+  `db.select(..., limit="2, 10", ...)` (equals to raw SQL statement
+  `SELECT ... LIMIT 2, 10`). Please replace them by moving the offset to
+  `offset` keyword like this: `db.select(..., offset=2, limit=10)`.
+
+Major changes since 0.39:
+
+* Fixed lots of Python-3 compatibility issues.
+* Drop support for Python < 2.7.
+* Allow to get form data from http PATCH request (fixes #259, tx @kufd)
+* Only store new session data if the data is non-default (fixes #161, tx @shish)
+* Supports `SameSite` cookie attribute (fixes #61 #99 #337)
+* Cookie expire time is now set to same as session `timeout` (fixes #409 #410)
+* Supports url for SQLite database like `sqlite:///mydb.sqlite`,
+  `sqlite:////absolute/path/mydb.sqlite` (fixes #209, tx @iamFIREcracker)
+* Allow HTML5 form input elements in `web.form.Input()` (fixes #440, tx @jimgregory)
+* Add more form classes for different types: `Email`, `Url`, `Number`, `Range`,
+  `Color`, `Search`, `Telephone` and `Datalist` (fixes #98 #497, tx @faruken @gjdv)
+* Return body for `NoMethod` error handler (fixes #240, tx @waldhol)
+* Directory `experimental/` has been removed, it's not used and out of date.
+* Module `web/webopenid.py` has been removed, it uses old `python-openid`
+  module which was released 9 years ago. If you need openid support, consider
+  `python-openid2` or other packages available on https://pypi.org/.
+* Fixed unicode in request url (fixes #461, tx @schneidersoft)
+* Fixed inline comment in Templator which leads to unexpected behavior (fixes #432, tx @lucylqe)
+* Fixed missing exception (ValueError) for socket.inet_pton to be compatible
+  with twisted patched `socket.inet_pton` (fixes #464, tx @tclh123)
+* Fixed incorrect order of arguments for sending email with boto (fixes #204, tx @asldevi)
+* Fixed notfound message is not utf-8 charset (fixes #500, tx @by-z)
+* Fixed error in creating pooled PostgresDB with pgdb driver (fixes #255, tx @PriceChild)
+* Fixed IP address which contains space should not pass validation (fixes #140, tx @chuangbo)
+* Fixed incorrect returned row ids with `multiple_insert()` (fixes #263 #447)
+* Fixed not correctly render the `id` attribute after changed (fixes #339, tx @jimgregory)
+* Fixed DiskStore concurrency issue (fixes Fixes #83 #182 #191 #289 #470, tx @skawouter)
+* Fixed app module isn't picked up by `Reloader` for first code change (fixes #438, tx @jzellman)
+
+## 2018-02-28 0.39
+
+* Fixed a security issue with the form module (tx Orange Tsai)
+* Fixed a security issue with the db module (tx Adrián Brav and Orange Tsai)
+
+## 2016-07-08 0.38
+
+* Fixed failing tests in test/session.py when postgres is not installed. (tx Michael Diamond)
+* Fixed an error with Python 2.3 (tx Michael Diamond)
+* web.database now accepts a URL, $DATABASE_URL (fixes #171) (tx Aaron Swartz, we miss you)
+* support port use 'port' as keyword for postgres database with used with pgdb (tx Sandesh Singh)
+* Fixes to FirebirdDB database (tx Ben Hanna)
+* Added a gaerun method to start application for google app engine (tx Matt Habel)
+* Better error message from `db.multiple_insert` when not all rows have the same keys (tx Ben Hoyt)
+* Allow custom messages for most errors (tx Shaun Sharples)
+* IPv6 support (tx Matthew of Boswell and zamabe)
+* Fixed sending email using Amazon SES (tx asldevi)
+* Fixed handling of long numbers in sqlify. closes #213. (tx cjrolo)
+* Escape HTML characters when emitting API docs. (tx Jeff Zellman)
+* Fixed an inconsistency in form.Dropdown when numbers are used for args and value. (tx Noprianto)
+* Fixed a potential remote execution risk in `reparam` (tx Adrián Brav)
+* The where clause in db queries can be a dict now
+* Added `first` method to iterbetter
+* Fix to unexpected session when used with MySQL (tx suhashpatil)
+* Change dburl2dict to use urlparse and to support the simple case of just a database name. (tx Jeff Zellman)
+* Support '204 No Content' status code (tx Matteo Landi)
+* Support `451 Unavailable For Legal Reasons` status code(tx Yannik Robin Kettenbach)
+* Updates to documentation (tx goodrone, asldevi)
+
+
 ## 2012-06-26 0.37
 
 * Fixed datestr issue on Windows -- #155
-* Fixed Python 2.4 compatability issues (tx fredludlow)
+* Fixed Python 2.4 compatibility issues (tx fredludlow)
 * Fixed error in utils.safewrite (tx shuge) -- #95
 * Allow use of web.data() with app.request() -- #105
-* Fixed an issue with session initializaton (tx beardedprojamz) -- #109
+* Fixed an issue with session initialization (tx beardedprojamz) -- #109
 * Allow custom message on 400 Bad Request (tx patryk) -- #121
 * Made djangoerror work on GAE. -- #80
 * Handle malformatted data in the urls. -- #117
 * Made it easier to stop the dev server -- #100, #122
-* Added support fot customizing cookie_path in session (tx larsga) -- #89
+* Added support for customizing cookie_path in session (tx larsga) -- #89
 * Added exception for "415 Unsupported Media" (tx JirkaChadima) -- #145
 * Added GroupedDropdown to support `<optgroup>` tag (tx jzellman) -- #152
 * Fixed failure in embedded interpreter - #87
@@ -29,7 +146,7 @@
 * Fixed db.delete error with `using` clause (tx berndtj) -- #28
 * Fixed the case of no where-clauses in db.where
 * Fixed threadlocal error in python2.3 -- #77
-* Fixed TemplateResult inconsistant behavior -- #78
+* Fixed TemplateResult inconsistent behavior -- #78
 * Fixed query execution issues with MSSQL -- #71
 
 ## 2011-05-15 0.35
@@ -44,15 +161,15 @@
 * Added doseq support for web.url
 * New flag web.config.debug_sql to control printing of db queries (tx Nimrod S. Kerrett)
 * Fixed inserting default values into MySQL -- #49
-* Fixed rendering of Dropdown with mutliple values (tx krowbar) -- #43
-* Fixed mutliple set-cookie header issue with session -- #45
+* Fixed rendering of Dropdown with multiple values (tx krowbar) -- #43
+* Fixed multiple set-cookie header issue with session -- #45
 * Fixed error in safeunicode when used with appengine datastore objects
 * Fixed unicode error in generating debugerror -- #26
 * Fixed GAE compilation issue -- #24
 * Fixed unicode encoding issue in templates -- #17
 * Fixed a bug in form.RadioButton when called with tuple options (tx fhsm) -- #13
 * Fixed error in creating PostgresDB with pgdb driver (tx cninucci) -- #23
-* Support auto convertion of timestamp/date datatypes in sqlite to datetime.data objects -- #22
+* Support auto conversion of timestamp/date datatypes in sqlite to datetime.data objects -- #22
 * Fixed escaping issue on GAE -- #10
 * fixed form.validates for checkbox (tx Justin Davis).
 * fixed duplicate content-type in web.sendmail -- #20
@@ -64,7 +181,7 @@
 
 ## 2010-03-20 0.34
 
-* fix: boolen test works even for sqlite results (tx Emyr Thomas for the idea)
+* fix: boolean test works even for sqlite results (tx Emyr Thomas for the idea)
 * fix issue with loop.xx variables in templetor (Bug#476708)
 * hide unwanted tracebacks in debugerror
 * display correct template line numbers in debugerror
@@ -88,7 +205,7 @@
 * fix: make sure sequence exists before queying for currval(seqname) when executing postgres insert query (Bug#268705)
 * fix: raise web.notfound() instead of return in autodelegate (tx SeC)
 * fix: raise NotSupportedError when len or bool is used on sqlite result (Bug#179644)
-* fix: make db paramater optional for creating postgres DB to allow taking it from environ. (Bug#153491)
+* fix: make db parameter optional for creating postgres DB to allow taking it from environ. (Bug#153491)
 * fix unicode errors in db module
 * fix: convert unicode strings to UTF8 before printing SQL queries
 * fix unicode error in debugerror
@@ -172,7 +289,7 @@
 * fix relative URI in `web.redirect` ([118236](https://bugs.launchpad.net/webpy/+bug/118236))
 * fix `ctx._write` support in built-in HTTP server ([121908](https://bugs.launchpad.net/webpy/+bug/121908))
 * fix `numify` strips things after '.'s ([118644](https://bugs.launchpad.net/webpy/+bug/118644))
-* fix various unicode isssues ([114703](https://bugs.launchpad.net/webpy/+bug/114703), [120644](https://bugs.launchpad.net/webpy/+bug/120644), [124280](https://bugs.launchpad.net/webpy/+bug/124280))
+* fix various unicode issues ([114703](https://bugs.launchpad.net/webpy/+bug/114703), [120644](https://bugs.launchpad.net/webpy/+bug/120644), [124280](https://bugs.launchpad.net/webpy/+bug/124280))
 
 ## 2007-05-28: 0.21
 
@@ -182,7 +299,7 @@
 * new `form.File`
 * new `web.url`
 * fix rendering issues with hidden and button inputs
-* fix 2.3 incompatability with `numify`
+* fix 2.3 incompatibility with `numify`
 * fix multiple headers with same name
 * fix web.redirect issues when homepath is not /
 * new CherryPy wsgi server
