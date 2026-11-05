@@ -538,14 +538,13 @@ class DefwithNode:
     def __init__(self, defwith, suite):
         if defwith:
             self.defwith = defwith.replace("with", "__template__") + ":"
-            # offset 4 lines. for encoding, _lineoffset_, loop and self.
-            self.defwith += "\n    _lineoffset_ = -4"
+            # offset 3 lines. for encoding, _lineoffset_, and self.
+            self.defwith += "\n    _lineoffset_ = -3"
         else:
             self.defwith = "def __template__():"
-            # offset 4 lines for encoding, __template__, _lineoffset_, loop and self.
-            self.defwith += "\n    _lineoffset_ = -5"
+            # offset 4 lines for encoding, __template__, _lineoffset_, and self.
+            self.defwith += "\n    _lineoffset_ = -4"
 
-        self.defwith += "\n    loop = ForLoop()"
         self.defwith += "\n    self = TemplateResult(); extend_ = self.extend"
         self.suite = suite
         self.end = "\n    return self"
@@ -633,20 +632,6 @@ class BlockNode:
         return f"<block: {repr(self.stmt)}, {repr(self.suite)}>"
 
 
-class ForNode(BlockNode):
-    def __init__(self, stmt, block, begin_indent=""):
-        self.original_stmt = stmt
-        tok = PythonTokenizer(stmt)
-        tok.consume_till("in")
-        a = stmt[: tok.index]  # for i in
-        b = stmt[tok.index : -1]  # rest of for stmt excluding :
-        stmt = a + " loop.setup(" + b.strip() + "):"
-        super().__init__(stmt, block, begin_indent)
-
-    def __repr__(self):
-        return f"<block: {repr(self.original_stmt)}, {repr(self.suite)}>"
-
-
 class CodeNode:
     def __init__(self, stmt, block, begin_indent=""):
         # compensate one line for $code:
@@ -729,7 +714,7 @@ class SuiteNode:
 
 
 STATEMENT_NODES = {
-    "for": ForNode,
+    "for": BlockNode,
     "while": BlockNode,
     "if": IfNode,
     "elif": ElifNode,
@@ -739,72 +724,6 @@ STATEMENT_NODES = {
 }
 
 KEYWORDS = ["pass", "break", "continue", "return"]
-
-
-class ForLoop:
-    """
-    Wrapper for expression in for stament to support loop.xxx helpers.
-
-        >>> loop = ForLoop()
-        >>> for x in loop.setup(['a', 'b', 'c']):
-        ...     print(loop.index, loop.revindex, loop.parity, x)
-        ...
-        1 3 odd a
-        2 2 even b
-        3 1 odd c
-        >>> loop.index
-        Traceback (most recent call last):
-            ...
-        AttributeError: index
-    """
-
-    def __init__(self):
-        self._ctx = None
-
-    def __getattr__(self, name):
-        if self._ctx is None:
-            raise AttributeError(name)
-        else:
-            return getattr(self._ctx, name)
-
-    def setup(self, seq):
-        self._push()
-        return self._ctx.setup(seq)
-
-    def _push(self):
-        self._ctx = ForLoopContext(self, self._ctx)
-
-    def _pop(self):
-        self._ctx = self._ctx.parent
-
-
-class ForLoopContext:
-    """Stackable context for ForLoop to support nested for loops."""
-
-    def __init__(self, forloop, parent):
-        self._forloop = forloop
-        self.parent = parent
-
-    def setup(self, seq):
-        try:
-            self.length = len(seq)
-        except:
-            self.length = 0
-
-        self.index = 0
-        for a in seq:
-            self.index += 1
-            yield a
-        self._forloop._pop()
-
-    index0 = property(lambda self: self.index - 1)
-    first = property(lambda self: self.index == 1)
-    last = property(lambda self: self.index == self.length)
-    odd = property(lambda self: self.index % 2 == 1)
-    even = property(lambda self: self.index % 2 == 0)
-    parity = property(lambda self: ["odd", "even"][self.even])
-    revindex0 = property(lambda self: self.length - self.index)
-    revindex = property(lambda self: self.length - self.index + 1)
 
 
 class BaseTemplate:
@@ -832,7 +751,6 @@ class BaseTemplate:
         return dict(
             globals,
             __builtins__=builtins_,
-            ForLoop=ForLoop,
             TemplateResult=TemplateResult,
             escape_=self._escape,
             join_=self._join,
@@ -1111,13 +1029,6 @@ def test():
 
         >>> t('$if True: foo')()
         'foo\n'
-
-    Test loop.xxx.
-
-        >>> t("$for i in range(5):$loop.index, $loop.parity")()
-        '1, odd\n2, even\n3, odd\n4, even\n5, odd\n'
-        >>> t("$for i in range(2):\n    $for j in range(2):$loop.parent.parity $loop.parity")()
-        'odd odd\nodd even\neven odd\neven even\n'
 
     Test assignment.
 
