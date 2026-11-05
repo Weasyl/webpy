@@ -907,8 +907,6 @@ class Template(BaseTemplate):
         if isinstance(text, str) and text.startswith(BOM):
             text = text[len(BOM) :]
 
-        # support fort \$ for backward-compatibility
-        text = text.replace(r"\$", "$$")
         return text
 
     normalize_text = staticmethod(normalize_text)
@@ -1186,8 +1184,8 @@ def test():
 
         >>> t("Stop, $$money isn't evaluated.")()
         "Stop, $money isn't evaluated.\n"
-        >>> t(r"Stop, \$money isn't evaluated.")()
-        "Stop, $money isn't evaluated.\n"
+        >>> t(r"However, \$money is evaluated.", globals={"money": 1})()
+        'However, \\1 is evaluated.\n'
 
     Test space sensitivity.
 

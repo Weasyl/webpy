@@ -36,6 +36,11 @@ class TemplateTest(unittest.TestCase):
         f = Template(template, globals={"item": TestItem()})
         assert str(f()) == '<a href="/del/12345">Delete</a>\n'
 
+    def test_compat_escape_in_literal(self):
+        template = r"${r'\$foo $$bar'}"
+        f = Template(template)
+        assert str(f()) == "\\$foo $$bar\n"
+
 
 class TestParser(unittest.TestCase):
     """
