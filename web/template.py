@@ -563,7 +563,32 @@ def _compile_template(template_string, filename):
     return compiled_code
 
 
+def _create_escape(filter):
+    def escape_(value, escape):
+        if value is None:
+            return ""
+
+        value = str(value)
+        if escape:
+            value = filter(value)
+        return value
+
+    return escape_
+
+
+def _create_callable(*, code, globals, builtins, filter):
+    env = {
+        **globals,
+        "__builtins__": builtins,
+        "escape_": _create_escape(filter),
+    }
+    exec(code, env)
+    return env["__template__"]
+
+
 class Template:
+
+    __slots__ = ("filename", "render")
 
     def __init__(
         self,
@@ -582,38 +607,18 @@ class Template:
             builtins = stdlib_builtins
 
         self.filename = filename
-        self.filter = filter
-        self._globals = globals
-        self._builtins = builtins
 
         text = _normalize_text(text)
         code = _compile_template(text, filename=filename)
-        self.t = self._compile(code)
-
-    def _compile(self, code):
-        env = self.make_env(self._globals, self._builtins)
-        exec(code, env)
-        # __template__ is a global function declared when executing "code"
-        return env["__template__"]
-
-    def __call__(self, *a, **kw):
-        return self.t(*a, **kw)
-
-    def make_env(self, globals, builtins_):
-        return dict(
-            globals,
-            __builtins__=builtins_,
-            escape_=self._escape,
+        self.render = _create_callable(
+            code=code,
+            globals=globals,
+            builtins=builtins,
+            filter=filter,
         )
 
-    def _escape(self, value, escape):
-        if value is None:
-            return ""
-
-        value = str(value)
-        if escape:
-            value = self.filter(value)
-        return value
+    def __call__(self, *a, **kw):
+        return self.render(*a, **kw)
 
     def __repr__(self):
         """
