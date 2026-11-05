@@ -11,9 +11,6 @@ for-loop, if-loop etc are block nodes, which contain multiple child nodes.
 Each node can emit some python string. python string emitted by the
 root node is executed using python in the given environment.
 
-Enough care is taken to make sure the generated code and the template has line to line match,
-so that the error messages can point to exact line number in template. (It doesn't work in some cases still.)
-
 Grammar:
 
     template -> defwith sections
@@ -413,12 +410,8 @@ class DefwithNode:
     def __init__(self, defwith, suite):
         if defwith is not None:
             self.defwith = f"def __template__{defwith}:"
-            # offset 2 lines for _lineoffset_ and self.
-            self.defwith += "\n    _lineoffset_ = -2"
         else:
             self.defwith = "def __template__():"
-            # offset 3 lines for __template__, _lineoffset_, and self.
-            self.defwith += "\n    _lineoffset_ = -3"
 
         self.defwith += "\n    __output = []; extend_ = __output.extend"
         self.suite = suite
@@ -509,8 +502,7 @@ class BlockNode:
 
 class CodeNode:
     def __init__(self, stmt, block, begin_indent=""):
-        # compensate one line for $code:
-        self.code = "\n" + block
+        self.code = block
 
     def emit(self, indent, text_indent=""):
         return _LINE_START_RE.sub(indent, self.code).rstrip(" ")
@@ -556,8 +548,7 @@ class DefNode(BlockNode):
 
     def emit(self, indent, text_indent=""):
         text_indent = self.begin_indent + text_indent
-        out = indent + self.stmt + self.suite.emit(indent + INDENT, text_indent)
-        return indent + "_lineoffset_ -= 3\n" + out
+        return indent + self.stmt + self.suite.emit(indent + INDENT, text_indent)
 
 
 class SuiteNode:
