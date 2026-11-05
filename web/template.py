@@ -625,7 +625,7 @@ class Template:
         >>> Template(text='Template text', filename='burndown_chart.html', filter=...)
         <Template burndown_chart.html>
         """
-        return f"<{self.__class__.__name__} {self.filename}>"
+        return f"<{type(self).__name__} {self.filename}>"
 
 
 class ParseError(Exception):
