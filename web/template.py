@@ -524,16 +524,71 @@ class ExpressionNode(Node):
         return f"${escape}({ast.unparse(self.value)})"
 
 
-class BaseTemplate:
-    def __init__(self, code, filename, filter, globals, builtins):
+def _normalize_text(text):
+    r"""Normalize newlines to \n, ensure the text ends with \n, and expand tabs."""
+    text = text.replace("\r\n", "\n").replace("\r", "\n").expandtabs()
+    if not text.endswith("\n"):
+        text += "\n"
+
+    return text
+
+
+def _generate_code(text, *, filename):
+    # parse the text
+    rootnode = parse(text, filename=filename)
+
+    # generate python code from the parse tree
+    module = ast.Module(body=list(rootnode.emit()))
+    ast.fix_missing_locations(module)
+    return module
+
+
+def _get_source_line(template_string, lineno):
+    lines = template_string.splitlines()
+    return lines[lineno - 1] if lineno is not None and 1 <= lineno <= len(lines) else None
+
+
+def _compile_template(template_string, filename):
+    code = _generate_code(template_string, filename=filename)
+
+    try:
+        # compile the code first to report the errors, if any, with the filename
+        compiled_code = compile(code, filename, "exec")
+    except SyntaxError as err:
+        # display template line that caused the error along with the traceback.
+        err.msg += f"\n\nTemplate traceback:\n    File {err.filename!r}, line {err.lineno}\n        {_get_source_line(template_string, err.lineno)}"
+
+        raise
+
+    return compiled_code
+
+
+class Template:
+
+    def __init__(
+        self,
+        text,
+        *,
+        filename="<template>",
+        filter,
+        globals=None,
+        builtins=None,
+    ):
+        if filter is None:
+            raise ValueError("template escaping filter must be specified (e.g. `html.escape`)")
+        if globals is None:
+            globals = {}
+        if builtins is None:
+            builtins = stdlib_builtins
+
         self.filename = filename
         self.filter = filter
         self._globals = globals
         self._builtins = builtins
-        if code:
-            self.t = self._compile(code)
-        else:
-            self.t = lambda: ""
+
+        text = _normalize_text(text)
+        code = _compile_template(text, filename=filename)
+        self.t = self._compile(code)
 
     def _compile(self, code):
         env = self.make_env(self._globals, self._builtins)
@@ -561,79 +616,12 @@ class BaseTemplate:
             value = self.filter(value)
         return value
 
-
-class Template(BaseTemplate):
-
-    def __init__(
-        self,
-        text,
-        *,
-        filename="<template>",
-        filter,
-        globals=None,
-        builtins=None,
-    ):
-        text = Template.normalize_text(text)
-        code = self.compile_template(text, filename)
-
-        if filter is None:
-            raise ValueError("template escaping filter must be specified (e.g. `html.escape`)")
-        if globals is None:
-            globals = {}
-        if builtins is None:
-            builtins = stdlib_builtins
-
-        super().__init__(
-            code=code,
-            filename=filename,
-            filter=filter,
-            globals=globals,
-            builtins=builtins,
-        )
-
     def __repr__(self):
         """
         >>> Template(text='Template text', filename='burndown_chart.html', filter=...)
         <Template burndown_chart.html>
         """
         return f"<{self.__class__.__name__} {self.filename}>"
-
-    @staticmethod
-    def normalize_text(text):
-        r"""Normalize newlines to \n, ensure the text ends with \n, and expand tabs."""
-        text = text.replace("\r\n", "\n").replace("\r", "\n").expandtabs()
-        if not text.endswith("\n"):
-            text += "\n"
-
-        return text
-
-    @staticmethod
-    def _generate_code(text, *, filename):
-        # parse the text
-        rootnode = parse(text, filename=filename)
-
-        # generate python code from the parse tree
-        module = ast.Module(body=list(rootnode.emit()))
-        ast.fix_missing_locations(module)
-        return module
-
-    def compile_template(self, template_string, filename):
-        code = Template._generate_code(template_string, filename=filename)
-
-        def get_source_line(lineno):
-            lines = template_string.splitlines()
-            return lines[lineno - 1] if lineno is not None and 1 <= lineno <= len(lines) else None
-
-        try:
-            # compile the code first to report the errors, if any, with the filename
-            compiled_code = compile(code, filename, "exec")
-        except SyntaxError as err:
-            # display template line that caused the error along with the traceback.
-            err.msg += f"\n\nTemplate traceback:\n    File {err.filename!r}, line {err.lineno}\n        {get_source_line(err.lineno)}"
-
-            raise
-
-        return compiled_code
 
 
 class ParseError(Exception):
