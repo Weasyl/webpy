@@ -597,7 +597,6 @@ class Template:
         return env["__template__"]
 
     def __call__(self, *a, **kw):
-        __hidetraceback__ = True  # noqa: F841
         return self.t(*a, **kw)
 
     def make_env(self, globals, builtins_):
