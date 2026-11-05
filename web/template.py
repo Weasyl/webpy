@@ -713,15 +713,10 @@ class Template(BaseTemplate):
 
     @staticmethod
     def normalize_text(text):
-        """Normalizes template text by correcting \r\n, tabs and BOM chars."""
+        r"""Normalize newlines to \n, ensure the text ends with \n, and expand tabs."""
         text = text.replace("\r\n", "\n").replace("\r", "\n").expandtabs()
         if not text.endswith("\n"):
             text += "\n"
-
-        # ignore BOM chars at the beginning of template
-        BOM = "\xef\xbb\xbf"
-        if isinstance(text, str) and text.startswith(BOM):
-            text = text[len(BOM) :]
 
         return text
 
@@ -905,11 +900,6 @@ def test():
         Traceback (most recent call last):
             ...
         NameError: name 'min' is not defined
-
-    Test BOM chars.
-
-        >>> t('\xef\xbb\xbf$def with(x)\n$x')('foo')
-        'foo\n'
 
     Test for with weird cases.
 
