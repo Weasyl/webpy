@@ -2,7 +2,7 @@ def htmlquote(text):
     r"""
     Encodes `text` for raw use in HTML.
 
-        >>> htmlquote(u"<'&\">")
+        >>> htmlquote("<'&\">")
         '&lt;&#39;&amp;&quot;&gt;'
     """
     text = text.replace("&", "&amp;")  # Must be done first!
@@ -21,8 +21,8 @@ def websafe(val):
         '&lt;&#39;&amp;&quot;&gt;'
         >>> websafe(None)
         ''
-        >>> websafe(u'\u203d') == u'\u203d'
-        True
+        >>> websafe('\u203d')
+        '\u203d'
     """
     if val is None:
         return ""
