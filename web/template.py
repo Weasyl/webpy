@@ -538,12 +538,12 @@ class DefwithNode:
     def __init__(self, defwith, suite):
         if defwith:
             self.defwith = defwith.replace("with", "__template__") + ":"
-            # offset 3 lines. for encoding, _lineoffset_, and self.
-            self.defwith += "\n    _lineoffset_ = -3"
+            # offset 2 lines for _lineoffset_ and self.
+            self.defwith += "\n    _lineoffset_ = -2"
         else:
             self.defwith = "def __template__():"
-            # offset 4 lines for encoding, __template__, _lineoffset_, and self.
-            self.defwith += "\n    _lineoffset_ = -4"
+            # offset 3 lines for __template__, _lineoffset_, and self.
+            self.defwith += "\n    _lineoffset_ = -3"
 
         self.defwith += "\n    self = TemplateResult(); extend_ = self.extend"
         self.suite = suite
