@@ -41,10 +41,9 @@ class Storage(dict):
 storage = Storage
 
 
-def storify(mapping, *requireds, **defaults):
+def storify(mapping, **defaults):
     """
-    Creates a `storage` object from dictionary `mapping`, raising `KeyError` if
-    d doesn't have all of the keys in `requireds` and using the default
+    Creates a `storage` object from dictionary `mapping`, using the default
     values for keys found in `defaults`.
 
     For example, `storify({'a':1, 'c':3}, b=2, c=0)` will return the equivalent of
@@ -63,15 +62,10 @@ def storify(mapping, *requireds, **defaults):
         >>> storify({}, a=[]).a
         []
 
-    Similarly, if the value has a `value` attribute, `storify will return _its_
-    value, unless the key appears in `defaults` as a dictionary.
+    Similarly, if the value has a `value` attribute, `storify` will return _its_ value.
 
         >>> storify({'a':storage(value=1)}).a
         1
-        >>> storify({'a':storage(value=1)}, a={}).a
-        <Storage {'value': 1}>
-        >>> storify({}, a={}).a
-        {}
 
     """
     def getvalue(x):
@@ -81,15 +75,14 @@ def storify(mapping, *requireds, **defaults):
             return getattr(x, "value", x)
 
     stor = Storage()
-    for key in requireds + tuple(mapping.keys()):
+    for key in tuple(mapping.keys()):
         value = mapping[key]
         if isinstance(value, list):
             if isinstance(defaults.get(key), list):
                 value = [getvalue(x) for x in value]
             else:
                 value = value[-1]
-        if not isinstance(defaults.get(key), dict):
-            value = getvalue(value)
+        value = getvalue(value)
         if isinstance(defaults.get(key), list) and not isinstance(value, list):
             value = [value]
 
@@ -99,8 +92,6 @@ def storify(mapping, *requireds, **defaults):
         result = value
         if hasattr(stor, key):
             result = stor[key]
-        if value == () and not isinstance(result, tuple):
-            result = (result,)
         setattr(stor, key, result)
 
     return stor
