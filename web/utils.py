@@ -74,9 +74,8 @@ def storify(mapping, **defaults):
         else:
             return getattr(x, "value", x)
 
-    stor = Storage()
-    for key in tuple(mapping.keys()):
-        value = mapping[key]
+    stor = Storage(defaults)
+    for key, value in mapping.items():
         if isinstance(value, list):
             if isinstance(defaults.get(key), list):
                 value = [getvalue(x) for x in value]
@@ -86,13 +85,7 @@ def storify(mapping, **defaults):
         if isinstance(defaults.get(key), list) and not isinstance(value, list):
             value = [value]
 
-        setattr(stor, key, value)
-
-    for key, value in defaults.items():
-        result = value
-        if hasattr(stor, key):
-            result = stor[key]
-        setattr(stor, key, result)
+        stor[key] = value
 
     return stor
 
