@@ -19,27 +19,27 @@ class TemplateTest(unittest.TestCase):
     def test_overridden(self):
         template = "$print('blah')"
         f = Template(template, globals={"print": lambda x: x})
-        assert str(f()) == "blah\n"
+        assert f() == "blah\n"
 
     def test_quotes(self):
         template = 'a="$foo" <p>'
         f = Template(template, globals={"foo": "bar"})
-        assert str(f()) == 'a="bar" <p>\n'
+        assert f() == 'a="bar" <p>\n'
 
     def test_accessor(self):
         template = 'a="$foo.id"<p>'
         f = Template(template, globals={"foo": TestItem()})
-        assert str(f()) == 'a="12345"<p>\n'
+        assert f() == 'a="12345"<p>\n'
 
     def test_href(self):
         template = '<a href="/del/$item.id">Delete</a>'
         f = Template(template, globals={"item": TestItem()})
-        assert str(f()) == '<a href="/del/12345">Delete</a>\n'
+        assert f() == '<a href="/del/12345">Delete</a>\n'
 
     def test_compat_escape_in_literal(self):
         template = r"${r'\$foo $$bar'}"
         f = Template(template)
-        assert str(f()) == "\\$foo $$bar\n"
+        assert f() == "\\$foo $$bar\n"
 
 
 class TestParser(unittest.TestCase):
@@ -49,7 +49,6 @@ class TestParser(unittest.TestCase):
     Tests functions from the Parser class as if the following template were loaded:
 
     test_template = '''$def with (back, docs)
-    $var title: Index
     <p><a href="$back">&larr; Back to Index</a></p>
     <ul>
     $for path, title in docs:

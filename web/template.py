@@ -46,9 +46,6 @@ __all__ = [
     "test",
 ]
 
-
-from collections.abc import MutableMapping
-
 _INDENT_RE = re.compile("  +")
 _LINE_START_RE = re.compile("^", re.M)
 
@@ -114,9 +111,7 @@ class Parser:
             begin_indent, text2 = text[:index], text[index + 1 :]
             ahead = self.python_lookahead(text2)
 
-            if ahead == "var":
-                return self.read_var(text2)
-            elif ahead in self.statement_nodes:
+            if ahead in self.statement_nodes:
                 return self.read_block_section(text2, begin_indent)
             elif ahead in self.keywords:
                 return self.read_keyword(text2)
@@ -125,44 +120,6 @@ class Parser:
                 # ex: $ a = b + 2
                 return self.read_assignment(text2)
         return self.readline(text)
-
-    def read_var(self, text):
-        r"""Reads a var statement.
-
-        >>> read_var = Parser().read_var
-        >>> read_var('var x=10\nfoo')
-        (<var: x = 10>, 'foo')
-        >>> read_var('var x: hello $name\nfoo')
-        (<var: x = join_('hello ', escape_(name, True))>, 'foo')
-        """
-        line, text = splitline(text)
-        tokens = self.python_tokens(line)
-        if len(tokens) < 4:
-            raise SyntaxError("Invalid var statement")
-
-        name = tokens[1]
-        sep = tokens[2]
-        value = line.split(sep, 1)[1].strip()
-
-        if sep == "=":
-            pass  # no need to process value
-        elif sep == ":":
-            # @@ Hack for backward-compatibility
-            if tokens[3] == "\n":  # multi-line var statement
-                block, text = self.read_indented_block(text, "    ")
-                lines = [self.readline(x)[0] for x in block.splitlines()]
-                nodes = []
-                for x in lines:
-                    nodes.extend(x.nodes)
-                    nodes.append(TextNode("\n"))
-            else:  # single-line var statement
-                linenode, _ = self.readline(value)
-                nodes = linenode.nodes
-            parts = [node.emit("") for node in nodes]
-            value = "join_(%s)" % ", ".join(parts)
-        else:
-            raise SyntaxError("Invalid var statement")
-        return VarNode(name, value), text
 
     def read_suite(self, text):
         r"""Reads section by section till end of text.
@@ -388,10 +345,6 @@ class Parser:
         tokens = _tokenize(text)
         return next(tokens)[1]
 
-    def python_tokens(self, text):
-        tokens = _tokenize(text)
-        return [t[1] for t in tokens]
-
     def read_indented_block(self, text, indent):
         r"""Read a block of text. A block is what typically follows a for or if statement.
         It can be in the same line as that of the statement or an indented block.
@@ -510,9 +463,9 @@ class DefwithNode:
             # offset 3 lines for __template__, _lineoffset_, and self.
             self.defwith += "\n    _lineoffset_ = -3"
 
-        self.defwith += "\n    self = TemplateResult(); extend_ = self.extend"
+        self.defwith += "\n    __output = []; extend_ = __output.extend"
         self.suite = suite
-        self.end = "\n    return self"
+        self.end = "\n    return ''.join(__output)"
 
     def emit(self, indent):
         return self.defwith + self.suite.emit(indent + INDENT) + self.end
@@ -637,29 +590,17 @@ class DefNode(BlockNode):
         super().__init__(*a, **kw)
 
         code = CodeNode("", "")
-        code.code = "self = TemplateResult(); extend_ = self.extend\n"
+        code.code = "__output = []; extend_ = __output.extend\n"
         self.suite.sections.insert(0, code)
 
         code = CodeNode("", "")
-        code.code = "return self\n"
+        code.code = "return ''.join(__output)\n"
         self.suite.sections.append(code)
 
     def emit(self, indent, text_indent=""):
         text_indent = self.begin_indent + text_indent
         out = indent + self.stmt + self.suite.emit(indent + INDENT, text_indent)
         return indent + "_lineoffset_ -= 3\n" + out
-
-
-class VarNode:
-    def __init__(self, name, value):
-        self.name = name
-        self.value = value
-
-    def emit(self, indent, text_indent):
-        return indent + f"self[{repr(self.name)}] = {self.value}\n"
-
-    def __repr__(self):
-        return f"<var: {self.name} = {self.value}>"
 
 
 class SuiteNode:
@@ -713,13 +654,8 @@ class BaseTemplate:
         return dict(
             globals,
             __builtins__=builtins_,
-            TemplateResult=TemplateResult,
             escape_=self._escape,
-            join_=self._join,
         )
-
-    def _join(self, *items):
-        return "".join(items)
 
     def _escape(self, value, escape=False):
         if value is None:
@@ -820,116 +756,10 @@ class ParseError(Exception):
     pass
 
 
-class TemplateResult(MutableMapping):
-    """Dictionary like object for storing template output.
-
-    The result of a template execution is usually a string, but sometimes it
-    contains attributes set using $var. This class provides a simple
-    dictionary like interface for storing the output of the template and the
-    attributes. The output is stored with a special key __body__. Converting
-    the TemplateResult to string or unicode returns the value of __body__.
-
-    When the template is in execution, the output is generated part by part
-    and those parts are combined at the end. Parts are added to the
-    TemplateResult by calling the `extend` method and the parts are combined
-    seamlessly when __body__ is accessed.
-
-        >>> d = TemplateResult(__body__='hello, world', x='foo')
-        >>> print(d)
-        hello, world
-        >>> d.x
-        'foo'
-        >>> d = TemplateResult()
-        >>> d.extend(['hello', 'world'])
-        >>> d
-        <TemplateResult: {'__body__': 'helloworld'}>
-    """
-
-    def __init__(self, *a, **kw):
-        self.__dict__["_d"] = dict(*a, **kw)
-        self._d.setdefault("__body__", "")
-
-        self.__dict__["_parts"] = []
-        self.__dict__["extend"] = self._parts.extend
-
-        self._d.setdefault("__body__", None)
-
-    def keys(self):
-        return self._d.keys()
-
-    def _prepare_body(self):
-        """Prepare value of __body__ by joining parts."""
-        if self._parts:
-            value = "".join(self._parts)
-            self._parts[:] = []
-            body = self._d.get("__body__")
-            if body:
-                self._d["__body__"] = body + value
-            else:
-                self._d["__body__"] = value
-
-    def __getitem__(self, name):
-        if name == "__body__":
-            self._prepare_body()
-        return self._d[name]
-
-    def __setitem__(self, name, value):
-        if name == "__body__":
-            self._prepare_body()
-        return self._d.__setitem__(name, value)
-
-    def __delitem__(self, name):
-        if name == "__body__":
-            self._prepare_body()
-        return self._d.__delitem__(name)
-
-    def __getattr__(self, key):
-        try:
-            return self[key]
-        except KeyError as k:
-            raise AttributeError(k)
-
-    def __setattr__(self, key, value):
-        self[key] = value
-
-    def __delattr__(self, key):
-        try:
-            del self[key]
-        except KeyError as k:
-            raise AttributeError(k)
-
-    def __str__(self):
-        self._prepare_body()
-        return self["__body__"]
-
-    def __repr__(self):
-        self._prepare_body()
-        return "<TemplateResult: %s>" % self._d
-
-    def __len__(self):
-        return self._d.__len__()
-
-    def __iter__(self):
-        for i in self._d.__iter__():
-            if i == "__body__":
-                self._prepare_body()
-            yield i
-
-
 def test():
     r"""Doctest for testing template module.
 
-    Define a utility function to run template test.
-
-        >>> class TestResult:
-        ...     def __init__(self, t): self.t = t
-        ...     def __getattr__(self, name): return getattr(self.t, name)
-        ...     def __repr__(self): return repr(str(self.t))
-        ...
-        >>> def t(code, **keywords):
-        ...     tmpl = Template(code, **keywords)
-        ...     return lambda *a, **kw: TestResult(tmpl(*a, **kw))
-        ...
+        >>> t = Template
 
     Simple tests.
 
@@ -1075,18 +905,6 @@ def test():
         Traceback (most recent call last):
             ...
         NameError: name 'min' is not defined
-
-    Test vars.
-
-        >>> x = t('$var x: 1')()
-        >>> x.x
-        '1'
-        >>> x = t('$var x = 1')()
-        >>> x.x
-        1
-        >>> x = t('$var x:  \n    foo\n    bar')()
-        >>> x.x
-        'foo\nbar\n'
 
     Test BOM chars.
 
