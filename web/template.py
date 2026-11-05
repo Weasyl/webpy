@@ -9,7 +9,7 @@ Parse tree is a nodelist. TextNode and ExpressionNode are simple nodes and
 for-loop, if-loop etc are block nodes, which contain multiple child nodes.
 
 Each node can emit some python string. python string emitted by the
-root node is validated for safeeval and executed using python in the given environment.
+root node is executed using python in the given environment.
 
 Enough care is taken to make sure the generated code and the template has line to line match,
 so that the error messages can point to exact line number in template. (It doesn't work in some cases still.)
@@ -28,8 +28,7 @@ Grammar:
     pyexpr -> <python expression>
 """
 
-import ast
-import builtins
+import builtins as stdlib_builtins
 import glob
 import itertools
 import os
@@ -49,7 +48,6 @@ __all__ = [
     "render",
     "frender",
     "ParseError",
-    "SecurityError",
     "test",
 ]
 
@@ -747,51 +745,6 @@ STATEMENT_NODES = {
 
 KEYWORDS = ["pass", "break", "continue", "return"]
 
-TEMPLATE_BUILTIN_NAMES = [
-    "dict",
-    "enumerate",
-    "float",
-    "int",
-    "bool",
-    "list",
-    "long",
-    "reversed",
-    "set",
-    "slice",
-    "tuple",
-    "xrange",
-    "abs",
-    "all",
-    "any",
-    "callable",
-    "chr",
-    "cmp",
-    "divmod",
-    "filter",
-    "hex",
-    "id",
-    "isinstance",
-    "iter",
-    "len",
-    "max",
-    "min",
-    "oct",
-    "ord",
-    "pow",
-    "range",
-    "round",
-    "True",
-    "False",
-    "None",
-    "__import__",  # some c-libraries like datetime requires __import__ to present in the namespace
-]
-
-TEMPLATE_BUILTINS = {
-    name: getattr(builtins, name)
-    for name in TEMPLATE_BUILTIN_NAMES
-    if name in builtins.__dict__
-}
-
 
 class ForLoop:
     """
@@ -883,7 +836,7 @@ class BaseTemplate:
     def make_env(self, globals, builtins_):
         if sys.implementation.name == "pypy":
             # Pypy's `__builtins__` can't be overridden in exec. More details see issue #598.
-            overridden_builtins = builtins.__dict__.keys() - builtins_.keys()
+            overridden_builtins = stdlib_builtins.__dict__.keys() - builtins_.keys()
 
             def f(name, *args, **kwargs):
                 raise NameError("name '%s' is not defined" % name)
@@ -943,7 +896,7 @@ class Template(BaseTemplate):
         if globals is None:
             globals = self.globals
         if builtins is None:
-            builtins = TEMPLATE_BUILTINS
+            builtins = stdlib_builtins
 
         BaseTemplate.__init__(
             self,
@@ -1015,10 +968,6 @@ class Template(BaseTemplate):
             err.msg += f"\n\nTemplate traceback:\n    File {repr(err.filename)}, line {err.lineno}\n        {get_source_line(err.filename, err.lineno - 1)}"
 
             raise
-
-        # make sure code is safe
-        ast_node = ast.parse(code, filename)
-        SafeVisitor().walk(ast_node, filename)
 
         return compiled_code
 
@@ -1145,7 +1094,7 @@ class GAE_Render(Render):
             name = loc.rstrip("/").replace("/", ".")
             self.mod = __import__(name, None, None, ["x"])
 
-        self.mod.__dict__.update(kw.get("builtins", TEMPLATE_BUILTINS))
+        self.mod.__dict__.update(kw.get("builtins", stdlib_builtins))
         self.mod.__dict__.update(Template.globals)
         self.mod.__dict__.update(kw.get("globals", {}))
 
@@ -1226,199 +1175,6 @@ def compile_templates(root):
 
 class ParseError(Exception):
     pass
-
-
-class SecurityError(Exception):
-    """The template seems to be trying to do something naughty."""
-
-    pass
-
-
-ALLOWED_AST_NODES = [
-    "Add",
-    "And",
-    "Assign",
-    "Attribute",
-    "AugAssign",
-    "AugLoad",
-    "AugStore",
-    "BinOp",
-    "BitAnd",
-    "BitOr",
-    "BitXor",
-    "BoolOp",
-    "Break",
-    "Call",
-    "ClassDef",
-    "Compare",
-    "Constant",
-    "Continue",
-    "Del",
-    "Delete",
-    "Dict",
-    "DictComp",
-    "Div",
-    "Ellipsis",
-    "Eq",
-    "ExceptHandler",
-    "Expr",
-    "Expression",
-    "ExtSlice",
-    "FloorDiv",
-    "For",
-    "FunctionDef",
-    "GeneratorExp",
-    "Gt",
-    "GtE",
-    "If",
-    "IfExp",
-    "In",
-    "Index",
-    "Interactive",
-    "Invert",
-    "Is",
-    "IsNot",
-    "JoinedStr",
-    "LShift",
-    "Lambda",
-    "List",
-    "ListComp",
-    "Load",
-    "Lt",
-    "LtE",
-    "Mod",
-    "Module",
-    "Mult",
-    "Name",
-    "NameConstant",
-    "Not",
-    "NotEq",
-    "NotIn",
-    "Num",
-    "Or",
-    "Param",
-    "Pass",
-    "Pow",
-    "RShift",
-    "Return",
-    "Set",
-    "SetComp",
-    "Slice",
-    "Store",
-    "Str",
-    "Sub",
-    "Subscript",
-    "Suite",
-    "Tuple",
-    "UAdd",
-    "USub",
-    "UnaryOp",
-    "While",
-    "With",
-    "Yield",
-    "alias",
-    "arg",
-    "arguments",
-    "comprehension",
-    "keyword",
-]
-# Assert Exec Global Import ImportFrom Print Raise Repr TryExcept TryFinally
-
-
-class SafeVisitor(ast.NodeVisitor):
-    """
-    Make sure code is safe by walking through the AST.
-
-    Code considered unsafe if:
-        * it has restricted AST nodes (only nodes defined in ALLOWED_AST_NODES are allowed)
-        * it is trying to assign to attributes
-        * it is trying to access resricted attributes
-
-    Adopted from http://www.zafar.se/bkz/uploads/safe.txt (public domain, Babar K. Zafar)
-        * Using ast rather than compiler tree, for jython and Py3 support since Py2.6
-        * Simplified with ast.NodeVisitor class
-    """
-
-    def __init__(self, *args, **kwargs):
-        "Initialize visitor by generating callbacks for all AST node types."
-        super().__init__(*args, **kwargs)
-        self.errors = []
-
-    def walk(self, tree, filename):
-        "Validate each node in AST and raise SecurityError if the code is not safe."
-        self.filename = filename
-        self.visit(tree)
-        if self.errors:
-            raise SecurityError("\n".join([str(err) for err in self.errors]))
-
-    def generic_visit(self, node):
-        nodename = type(node).__name__
-        if nodename not in ALLOWED_AST_NODES:
-            self.fail_node(node, nodename)
-        super().generic_visit(node)
-
-    def visit_Name(self, node):
-        if node.id.startswith("__"):
-            self.fail_name(node)
-
-    def visit_Attribute(self, node):
-        attrname = self.get_node_attr(node)
-        if self.is_unallowed_attr(attrname):
-            self.fail_attribute(node, attrname)
-        super().generic_visit(node)
-
-    def visit_Assign(self, node):
-        self.check_assign_targets(node)
-
-    def visit_AugAssign(self, node):
-        self.check_assign_target(node)
-
-    def check_assign_targets(self, node):
-        for target in node.targets:
-            self.check_assign_target(target)
-        super().generic_visit(node)
-
-    def check_assign_target(self, targetnode):
-        targetname = type(targetnode).__name__
-        if targetname == "Attribute":
-            attrname = self.get_node_attr(targetnode)
-            self.fail_attribute(targetnode, attrname)
-
-    # failure modes
-    def fail_node(self, node, nodename):
-        lineno = self.get_node_lineno(node)
-        e = SecurityError(
-            "%s:%d - execution of '%s' statements is denied"
-            % (self.filename, lineno, nodename)
-        )
-        self.errors.append(e)
-
-    def fail_attribute(self, node, attrname):
-        lineno = self.get_node_lineno(node)
-        e = SecurityError(
-            "%s:%d - access to attribute '%s' is denied"
-            % (self.filename, lineno, attrname)
-        )
-        self.errors.append(e)
-
-    def fail_name(self, node):
-        lineno = self.get_node_lineno(node)
-        e = SecurityError(
-            "%s:%d - access to name '%s' is denied" % (self.filename, lineno, node.id)
-        )
-        self.errors.append(e)
-
-    # helpers
-    def is_unallowed_attr(self, name):
-        return (
-            name.startswith("_") or name.startswith("func_") or name.startswith("im_")
-        )
-
-    def get_node_attr(self, node):
-        return "attr" in node._fields and node.attr or None
-
-    def get_node_lineno(self, node):
-        return (node.lineno) and node.lineno or 0
 
 
 class TemplateResult(MutableMapping):

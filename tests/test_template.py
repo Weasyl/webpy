@@ -1,7 +1,7 @@
 import unittest
 
 import web
-from web.template import ExpressionNode, Parser, SecurityError, Template
+from web.template import ExpressionNode, Parser, Template
 
 
 class TestItem:
@@ -28,20 +28,8 @@ def t(code, **keywords):
 
 
 class TemplateTest(unittest.TestCase):
-    """Tests for the template security feature."""
-
-    def testPrint(self):
-        tpl = "$code:\n    print('blah')"
-        self.assertRaises(NameError, t(tpl))
 
     def testAttr(self):
-        tpl = "$code:\n    (lambda x: x+1).func_code"
-        self.assertRaises(SecurityError, t, tpl)
-
-        tpl = "$def with (a)\n$code:\n    a.b = 3"
-        self.assertRaises(SecurityError, t, tpl)
-
-        # these two should execute themselves flawlessly
         t("$code:\n    foo = {'a': 1}.items()")()
         t("$code:\n    bar = {k:0 for k in [1,2,3]}")()
 
@@ -64,34 +52,6 @@ class TemplateTest(unittest.TestCase):
         template = '<a href="/del/$item.id">Delete</a>'
         f = t(template, globals={"item": TestItem()})
         assert repr(f()) == "'<a href=\"/del/12345\">Delete</a>\\n'"
-
-    def testImportMustFail(self):
-        tpl = "${__import__('os').getpwd()}"
-        self.assertRaises(SecurityError, t, tpl)
-
-    def test_SecutityError_name(self):
-        tpl = "$__special_name"
-        self.assertRaises(SecurityError, Template, tpl)
-
-        tpl = "${__special_name}"
-        self.assertRaises(SecurityError, Template, tpl)
-
-        tpl = "$var foo = __special_name"
-        self.assertRaises(SecurityError, Template, tpl)
-
-    def test_SecutityError_attr(self):
-        tpl = "$foo._private"
-        self.assertRaises(SecurityError, Template, tpl)
-
-        tpl = "$foo()._private"
-        self.assertRaises(SecurityError, Template, tpl)
-
-    def test_SecutityError_not_allowed_nodes(self):
-        tpl = "$code: import os"
-        self.assertRaises(SecurityError, Template, tpl)
-
-        tpl = "$code: raise Exception('x')"
-        self.assertRaises(SecurityError, Template, tpl)
 
 
 class TestParser(unittest.TestCase):
