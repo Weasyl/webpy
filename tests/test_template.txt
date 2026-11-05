@@ -200,3 +200,8 @@ Test `$code`.
     '6\n'
     >>> t("$code: a = 2\n    a *= 3\n$a")()
     '    a *= 3\n2\n'
+
+Test `$def`.
+
+    >>> Template("$def foo(x): <li>$x\\\n$foo('&')", filter=html.escape)()
+    '&lt;li&gt;&amp;amp;\n'
