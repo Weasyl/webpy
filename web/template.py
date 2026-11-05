@@ -62,16 +62,8 @@ def _tokenize(line):
 
 
 class Parser:
-    """Parser Base."""
 
-    def __init__(self):
-        self.statement_nodes = STATEMENT_NODES
-        self.keywords = KEYWORDS
-
-    def parse(self, text, name="<template>"):
-        self.text = text
-        self.name = name
-
+    def parse(self, text):
         defwith, text = self.read_defwith(text)
         suite = self.read_suite(text)
         return DefwithNode(defwith, suite)
@@ -100,9 +92,9 @@ class Parser:
             begin_indent, text2 = text[:index], text[index + 1 :]
             ahead = self.python_lookahead(text2)
 
-            if ahead in self.statement_nodes:
+            if ahead in STATEMENT_NODES:
                 return self.read_block_section(ahead, text2, begin_indent)
-            elif ahead in self.keywords:
+            elif ahead in KEYWORDS:
                 return self.read_keyword(text2)
             elif ahead.strip() == "":
                 # assignments starts with a space after $
@@ -403,7 +395,7 @@ class Parser:
 
             block, text = self.read_indented_block(text, indent)
 
-        return self.statement_nodes[keyword](stmt, block, begin_indent), text
+        return STATEMENT_NODES[keyword](stmt, block, begin_indent), text
 
 
 class DefwithNode:
@@ -471,7 +463,7 @@ class LineNode:
     def __init__(self, nodes):
         self.nodes = nodes
 
-    def emit(self, indent, text_indent="", name=""):
+    def emit(self, indent, text_indent=""):
         text = [node.emit("") for node in self.nodes]
         if text_indent:
             text = [repr(text_indent)] + text
@@ -661,15 +653,15 @@ class Template(BaseTemplate):
         return text
 
     @staticmethod
-    def _generate_code(text, filename):
+    def _generate_code(text):
         # parse the text
-        rootnode = Parser().parse(text, filename)
+        rootnode = Parser().parse(text)
 
         # generate python code from the parse tree
         return rootnode.emit(indent="").strip()
 
     def compile_template(self, template_string, filename):
-        code = Template._generate_code(template_string, filename)
+        code = Template._generate_code(template_string)
 
         def get_source_line(lineno):
             lines = template_string.splitlines()
