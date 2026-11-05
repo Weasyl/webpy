@@ -920,19 +920,16 @@ class Template(BaseTemplate):
     def compile_template(self, template_string, filename):
         code = Template._generate_code(template_string, filename)
 
-        def get_source_line(filename, lineno):
-            try:
-                lines = open(filename, encoding="utf-8").read().splitlines()
-                return lines[lineno]
-            except:
-                return None
+        def get_source_line(lineno):
+            lines = template_string.splitlines()
+            return lines[lineno - 1] if lineno is not None and 1 <= lineno <= len(lines) else None
 
         try:
             # compile the code first to report the errors, if any, with the filename
             compiled_code = compile(code, filename, "exec")
         except SyntaxError as err:
             # display template line that caused the error along with the traceback.
-            err.msg += f"\n\nTemplate traceback:\n    File {repr(err.filename)}, line {err.lineno}\n        {get_source_line(err.filename, err.lineno - 1)}"
+            err.msg += f"\n\nTemplate traceback:\n    File {repr(err.filename)}, line {err.lineno}\n        {get_source_line(err.lineno)}"
 
             raise
 
