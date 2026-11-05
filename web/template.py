@@ -1,6 +1,6 @@
 """
-simple, elegant templating
-(part of web.py)
+templating
+(formerly part of web.py)
 
 Template design:
 
@@ -42,7 +42,6 @@ from more_itertools import peekable
 
 from .net import websafe
 from .utils import re_compile, safestr, safeunicode, storage
-from .webapi import config
 
 __all__ = [
     "Template",
@@ -981,15 +980,6 @@ class Template(BaseTemplate):
 
     normalize_text = staticmethod(normalize_text)
 
-    def __call__(self, *a, **kw):
-        __hidetraceback__ = True  # noqa: F841
-        from . import webapi as web
-
-        if "headers" in web.ctx and self.content_type:
-            web.header("Content-Type", self.content_type, unique=True)
-
-        return BaseTemplate.__call__(self, *a, **kw)
-
     def generate_code(text, filename, parser=None):
         # parse the text
         parser = parser or Parser()
@@ -1064,7 +1054,7 @@ class Render:
         self._keywords = keywords
 
         if cache is None:
-            cache = not config.get("debug", False)
+            cache = True
 
         if cache:
             self._cache = {}
@@ -1748,7 +1738,3 @@ def test():
 if __name__ == "__main__":
     if "--compile" in sys.argv:
         compile_templates(sys.argv[2])
-    else:
-        import doctest
-
-        doctest.testmod()

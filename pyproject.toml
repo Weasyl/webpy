@@ -5,58 +5,16 @@ requires = [
 ]
 
 [project]
-name = "web-py"
-description = "web.py: makes web apps"
-readme = { file = "README.md", content-type = "text/plain" }
-license = { text = "Public domain" }
-maintainers = [ { name = "Anand Chitipothu", email = "anandology@gmail.com" } ]
-authors = [ { name = "Aaron Swartz", email = "me@aaronsw.com" } ]
-requires-python = ">=3.10,<3.15"
-classifiers = [
-  "License :: Public Domain",
-  "Programming Language :: Python",
-  "Programming Language :: Python :: 3 :: Only",
-  "Programming Language :: Python :: 3.10",
-  "Programming Language :: Python :: 3.11",
-  "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
-  "Programming Language :: Python :: 3.14",
+name = "weasyl-old-templates"
+version = "1.0.0"
+dependencies = [
+  "more_itertools>=2.6",
 ]
-dynamic = [
-  "dependencies",
-  "version",
-]
-urls.Homepage = "http://webpy.org/"
-urls.Source = "https://github.com/webpy/webpy"
 
 [tool.setuptools]
-packages = [ "web", "web.contrib" ]
+packages = [ "web" ]
 platforms = [ "any" ]
 include-package-data = false
-
-[tool.setuptools.dynamic]
-version = { attr = "web.__version__" }
-dependencies = { file = [ "requirements.txt" ] }
-
-[tool.black]
-exclude = '''
-
-(
-  /(
-      \.eggs         # exclude a few common directories in the
-    | \.git          # root of the project
-    | \.hg
-    | \.mypy_cache
-    | \.tox
-    | \.venv
-    | _build
-    | buck-out
-    | build
-    | dist
-  )/
-  | docs/conf.py
-)
-'''
 
 [tool.ruff]
 target-version = "py310"
@@ -86,7 +44,3 @@ lint.pylint.allow-magic-value-types = [ "int", "str" ]
 lint.pylint.max-args = 9 # default is 5
 lint.pylint.max-branches = 17 # default is 12
 lint.pylint.max-returns = 8 # default is 6
-
-[tool.codespell]
-ignore-words-list = "asend,gae,notin,requireds"
-skip = [ "./.*" ]
