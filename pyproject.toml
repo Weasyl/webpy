@@ -6,7 +6,7 @@ requires = [
 
 [project]
 name = "weasyl-old-templates"
-version = "1.0.0"
+version = "2.0.4"
 
 [tool.setuptools]
 packages = [ "web" ]
