@@ -426,9 +426,29 @@ class Parser:
         >>> read_statement('for i in range(10): hello $name')
         ('for i in range(10):', ' hello $name')
         """
-        tok = PythonTokenizer(text)
-        tok.consume_till(":")
-        return text[: tok.index], text[tok.index :]
+        open = []
+
+        for t in _tokenize(text):
+            et = t.exact_type
+
+            match et:
+                case token.LPAR:
+                    open.append(token.RPAR)
+                case token.LSQB:
+                    open.append(token.RSQB)
+                case token.LBRACE:
+                    open.append(token.RBRACE)
+                case _ if open:
+                    if et == open[-1]:
+                        del open[-1]
+                case token.COLON:
+                    row, col = t.end
+                    assert row == 1
+                    return text[:col], text[col:]
+                case token.NEWLINE:
+                    break
+
+        raise ParseError("Expected clause header to end with a colon")
 
     def read_block_section(self, text, begin_indent=""):
         r"""
@@ -477,56 +497,6 @@ class Parser:
             return self.statement_nodes[keyword](stmt, block, begin_indent)
         else:
             raise ParseError("Unknown statement: %s" % repr(keyword))
-
-
-class PythonTokenizer:
-    """Utility wrapper over python tokenizer."""
-
-    def __init__(self, text):
-        self.text = text
-        self.tokens = _tokenize(text)
-        self.index = 0
-
-    def consume_till(self, delim):
-        """Consumes tokens till colon.
-
-        >>> tok = PythonTokenizer('for i in range(10): hello $i')
-        >>> tok.consume_till(':')
-        >>> tok.text[:tok.index]
-        'for i in range(10):'
-        >>> tok.text[tok.index:]
-        ' hello $i'
-        """
-        try:
-            while True:
-                t = next(self)
-                if t.value == delim:
-                    break
-                elif t.value == "(":
-                    self.consume_till(")")
-                elif t.value == "[":
-                    self.consume_till("]")
-                elif t.value == "{":
-                    self.consume_till("}")
-
-                # if end of line is found, it is an exception.
-                # Since there is no easy way to report the line number,
-                # leave the error reporting to the python parser later
-                # @@ This should be fixed.
-                if t.value == "\n":
-                    break
-        except:
-            # raise ParseError, "Expected %s, found end of line." % repr(delim)
-
-            # raising ParseError doesn't show the line number.
-            # if this error is ignored, then it will be caught when compiling the python code.
-            return
-
-    def __next__(self):
-        type, t, begin, end, line = next(self.tokens)
-        row, col = end
-        self.index = col
-        return storage(type=type, value=t, begin=begin, end=end)
 
 
 class DefwithNode:
@@ -1135,10 +1105,7 @@ def test():
         >>> t("$for k, v in ({'a': 1, 'b': 2}.items():\n    $k $v")()
         Traceback (most recent call last):
             ...
-        SyntaxError: invalid syntax
-        <BLANKLINE>
-        Template traceback:
-            ...
+        tokenize.TokenError: ('unexpected EOF in multi-line statement', ...)
 
     Test datetime.
 
