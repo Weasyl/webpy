@@ -847,8 +847,6 @@ def test():
         ...
         >>> t('$def with (f)\n$:f("x")')(f)
         'x\n'
-        >>> t('$def with (f)\n$:f("x")')(f)
-        'x\n'
 
     Test dollar escaping.
 
