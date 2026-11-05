@@ -1,6 +1,5 @@
 import unittest
 
-import web
 from web.template import ExpressionNode, Parser, Template
 
 
@@ -76,10 +75,3 @@ class TestParser(unittest.TestCase):
         assert isinstance(expression_node, ExpressionNode)
         assert repr(expression_node) == "$title"
         assert got[1] == "</a></li>\n"
-
-
-class TestRender:
-    def test_template_without_ext(self, tmpdir):
-        tmpdir.join("foobar").write("hello")
-        render = web.template.render(str(tmpdir))
-        assert str(render.foobar()).strip() == "hello"

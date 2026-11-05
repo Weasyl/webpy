@@ -29,13 +29,10 @@ Grammar:
 """
 
 import builtins as stdlib_builtins
-import glob
 import itertools
 import os
-import sys
 import token
 import tokenize
-from functools import partial
 
 from more_itertools import peekable
 
@@ -44,9 +41,6 @@ from .utils import re_compile, safestr, safeunicode, storage
 
 __all__ = [
     "Template",
-    "Render",
-    "render",
-    "frender",
     "ParseError",
     "test",
 ]
@@ -555,8 +549,7 @@ class DefwithNode:
         self.end = "\n    return self"
 
     def emit(self, indent):
-        encoding = "# coding: utf-8\n"
-        return encoding + self.defwith + self.suite.emit(indent + INDENT) + self.end
+        return self.defwith + self.suite.emit(indent + INDENT) + self.end
 
     def __repr__(self):
         return f"<defwith: {self.defwith}, {self.suite}>"
@@ -834,17 +827,6 @@ class BaseTemplate:
         return self.t(*a, **kw)
 
     def make_env(self, globals, builtins_):
-        if sys.implementation.name == "pypy":
-            # Pypy's `__builtins__` can't be overridden in exec. More details see issue #598.
-            overridden_builtins = stdlib_builtins.__dict__.keys() - builtins_.keys()
-
-            def f(name, *args, **kwargs):
-                raise NameError("name '%s' is not defined" % name)
-
-            for name in overridden_builtins:
-                if name not in globals:
-                    globals[name] = partial(f, name)
-
         return dict(
             globals,
             __builtins__=builtins_,
@@ -970,207 +952,6 @@ class Template(BaseTemplate):
             raise
 
         return compiled_code
-
-
-class CompiledTemplate(Template):
-    def __init__(self, f, filename):
-        Template.__init__(self, "", filename)
-        self.t = f
-
-    def compile_template(self, *a):
-        return None
-
-    def _compile(self, *a):
-        return None
-
-
-class Render:
-    """The most preferred way of using templates.
-
-        render = web.template.render('templates')
-        print render.foo()
-
-    Optional parameter can be `base` can be used to pass output of
-    every template through the base template.
-
-        render = web.template.render('templates', base='layout')
-    """
-
-    def __init__(self, loc="templates", cache=None, base=None, **keywords):
-        self._loc = loc
-        self._keywords = keywords
-
-        if cache is None:
-            cache = True
-
-        if cache:
-            self._cache = {}
-        else:
-            self._cache = None
-
-        if base and not hasattr(base, "__call__"):
-            # make base a function, so that it can be passed to sub-renders
-            self._base = lambda page: self._template(base)(page)
-        else:
-            self._base = base
-
-    def _add_global(self, obj, name=None):
-        """Add a global to this rendering instance."""
-        if "globals" not in self._keywords:
-            self._keywords["globals"] = {}
-        if not name:
-            name = obj.__name__
-        self._keywords["globals"][name] = obj
-
-    def _lookup(self, name):
-        path = os.path.join(self._loc, name)
-        if os.path.isdir(path):
-            return "dir", path
-        else:
-            path = self._findfile(path)
-            if path:
-                return "file", path
-            else:
-                return "none", None
-
-    def _load_template(self, name):
-        kind, path = self._lookup(name)
-
-        if kind == "dir":
-            return Render(
-                path, cache=self._cache is not None, base=self._base, **self._keywords
-            )
-        elif kind == "file":
-            with open(path, encoding="utf-8") as tmpl_file:
-                return Template(tmpl_file.read(), filename=path, **self._keywords)
-        else:
-            raise AttributeError("No template named " + name)
-
-    def _findfile(self, path_prefix):
-        p = [
-            f for f in glob.glob(path_prefix + ".*") if not f.endswith("~")
-        ]  # skip backup files
-        p.sort()  # sort the matches for deterministic order
-
-        # support templates without extension (#364)
-        # When no templates are found and a file is found with the exact name, use it.
-        if not p and os.path.exists(path_prefix):
-            p = [path_prefix]
-
-        return p and p[0]
-
-    def _template(self, name):
-        if self._cache is not None:
-            if name not in self._cache:
-                self._cache[name] = self._load_template(name)
-            return self._cache[name]
-        else:
-            return self._load_template(name)
-
-    def __getattr__(self, name):
-        t = self._template(name)
-        if self._base and isinstance(t, Template):
-
-            def template(*a, **kw):
-                return self._base(t(*a, **kw))
-
-            return template
-        else:
-            return self._template(name)
-
-
-class GAE_Render(Render):
-    # Render gets over-written. make a copy here.
-    super = Render
-
-    def __init__(self, loc, *a, **kw):
-        GAE_Render.super.__init__(self, loc, *a, **kw)
-
-        import types
-
-        if isinstance(loc, types.ModuleType):
-            self.mod = loc
-        else:
-            name = loc.rstrip("/").replace("/", ".")
-            self.mod = __import__(name, None, None, ["x"])
-
-        self.mod.__dict__.update(kw.get("builtins", stdlib_builtins))
-        self.mod.__dict__.update(Template.globals)
-        self.mod.__dict__.update(kw.get("globals", {}))
-
-    def _load_template(self, name):
-        t = getattr(self.mod, name)
-        import types
-
-        if isinstance(t, types.ModuleType):
-            return GAE_Render(
-                t, cache=self._cache is not None, base=self._base, **self._keywords
-            )
-        else:
-            return t
-
-
-render = Render
-# setup render for Google App Engine.
-try:
-    from google import appengine  # noqa: F401
-
-    render = Render = GAE_Render
-except ImportError:
-    pass
-
-
-def frender(path, **keywords):
-    """Creates a template from the given file path."""
-    return Template(open(path, encoding="utf-8").read(), filename=path, **keywords)
-
-
-def compile_templates(root):
-    """Compiles templates to python code."""
-    for dirpath, dirnames, filenames in os.walk(root):
-        filenames = [
-            f
-            for f in filenames
-            if not f.startswith(".")
-            and not f.endswith("~")
-            and not f.startswith("__init__.py")
-        ]
-
-        for d in dirnames[:]:
-            if d.startswith("."):
-                dirnames.remove(d)  # don't visit this dir
-
-        out = open(os.path.join(dirpath, "__init__.py"), "w", encoding="utf-8")
-        out.write(
-            "from web.template import CompiledTemplate, ForLoop, TemplateResult\n\n"
-        )
-        if dirnames:
-            out.write("import " + ", ".join(dirnames))
-        out.write("\n")
-
-        for f in filenames:
-            path = os.path.join(dirpath, f)
-
-            if "." in f:
-                name, _ = f.split(".", 1)
-            else:
-                name = f
-
-            text = open(path, encoding="utf-8").read()
-            text = Template.normalize_text(text)
-            code = Template.generate_code(text, path)
-
-            code = code.replace("__template__", name, 1)
-
-            out.write(code)
-
-            out.write("\n\n")
-            out.write(f"{name} = CompiledTemplate({name}, {repr(path)})\n")
-            out.write(f"join_ = {name}._join; escape_ = {name}._escape\n\n")
-
-            # create template to make sure it compiles
-            Template(open(path, encoding="utf-8").read(), path)
-        out.close()
 
 
 class ParseError(Exception):
@@ -1486,8 +1267,3 @@ def test():
 
     """
     pass
-
-
-if __name__ == "__main__":
-    if "--compile" in sys.argv:
-        compile_templates(sys.argv[2])
