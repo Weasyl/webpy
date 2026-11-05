@@ -175,7 +175,7 @@ class DefNode(PythonBlockNode):
 
 
 def _append_call(expr):
-    return ast.Expr(ast.Call(ast.Name("__append"), args=[expr]), lineno=0, col_offset=0)
+    return ast.Expr(ast.Call(ast.Name("__append", ctx=ast.Load()), args=[expr], keywords=[]), lineno=0, col_offset=0)
 
 
 class CodeNode(Node):
@@ -515,7 +515,7 @@ class ExpressionNode(Node):
         self.linen0 = linen0
 
     def emit(self):
-        node = _append_call(ast.Call(ast.Name("escape_"), args=[self.value, ast.Constant(self.escape)]))
+        node = _append_call(ast.Call(ast.Name("escape_", ctx=ast.Load()), args=[self.value, ast.Constant(self.escape)], keywords=[]))
         ast.increment_lineno(node, self.linen0)
         return (node,)
 
@@ -538,7 +538,7 @@ def _generate_code(text, *, filename):
     rootnode = parse(text, filename=filename)
 
     # generate python code from the parse tree
-    module = ast.Module(body=list(rootnode.emit()))
+    module = ast.Module(body=list(rootnode.emit()), type_ignores=[])
     ast.fix_missing_locations(module)
     return module
 

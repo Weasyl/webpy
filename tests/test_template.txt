@@ -177,7 +177,7 @@ Test for syntax error.
     >>> t("$for k, v in ({'a': 1, 'b': 2}.items():\n    $k $v")()
     Traceback (most recent call last):
         ...
-    tokenize.TokenError: ('unexpected EOF in multi-line statement', ...)
+    tokenize.TokenError: ...EOF in multi-line statement', ...)
 
 Test datetime.
 
