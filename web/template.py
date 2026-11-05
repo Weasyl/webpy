@@ -142,7 +142,7 @@ class Parser:
         if sep == "=":
             pass  # no need to process value
         elif sep == ":":
-            # @@ Hack for backward-compatability
+            # @@ Hack for backward-compatibility
             if tokens[3] == "\n":  # multi-line var statement
                 block, text = self.read_indented_block(text, "    ")
                 lines = [self.readline(x)[0] for x in block.splitlines()]
@@ -396,7 +396,7 @@ class Parser:
         return [t[1] for t in tokens]
 
     def read_indented_block(self, text, indent):
-        r"""Read a block of text. A block is what typically follows a for or it statement.
+        r"""Read a block of text. A block is what typically follows a for or if statement.
         It can be in the same line as that of the statement or an indented block.
 
             >>> read_indented_block = Parser().read_indented_block
