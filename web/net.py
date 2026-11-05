@@ -1,16 +1,4 @@
-def htmlquote(text):
-    r"""
-    Encodes `text` for raw use in HTML.
-
-        >>> htmlquote("<'&\">")
-        '&lt;&#39;&amp;&quot;&gt;'
-    """
-    text = text.replace("&", "&amp;")  # Must be done first!
-    text = text.replace("<", "&lt;")
-    text = text.replace(">", "&gt;")
-    text = text.replace("'", "&#39;")
-    text = text.replace('"', "&quot;")
-    return text
+from html import escape as html_escape
 
 
 def websafe(val):
@@ -18,7 +6,7 @@ def websafe(val):
     Converts `val` so that it is safe for use in Unicode HTML.
 
         >>> websafe("<'&\">")
-        '&lt;&#39;&amp;&quot;&gt;'
+        '&lt;&#x27;&amp;&quot;&gt;'
         >>> websafe(None)
         ''
         >>> websafe('\u203d')
@@ -32,4 +20,4 @@ def websafe(val):
     elif not isinstance(val, str):
         val = str(val)
 
-    return htmlquote(val)
+    return html_escape(val)
