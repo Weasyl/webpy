@@ -28,8 +28,10 @@ Test complicated expressions.
     'keep going.\n'
     >>> t('$def with (a)\n$a.b[0]')(Storage(b=[1]))
     '1\n'
-    >>> t('$[1,2][0]')()  # `$[]` is an interpolation delimeter, but not rewritten to `()` like `${}`. unclear purpose.
-    '[1, 2][0]\n'
+    >>> t('$[1,2][0]')()
+    Traceback (most recent call last):
+        ...
+    web.template.ParseError: Unsupported `$[]` interpolation expression; use `$()` or `${}`
     >>> t('$f"{1}"')
     Traceback (most recent call last):
         ...
@@ -40,6 +42,8 @@ Test escaping.
     >>> import html
     >>> t('$def with (x)\n$x', filter=html.escape)('<html>')
     '&lt;html&gt;\n'
+    >>> t('$def with (x)\n$:x', filter=html.escape)('<html>')
+    '<html>\n'
     >>> t('$def with (x)\n$x')('<html>')
     '<html>\n'
 
@@ -48,9 +52,9 @@ Test if, for and while.
     >>> t('$if 1: 1')()
     '1\n'
     >>> t('$if 1:\n    1')()
-    '1\n'
+    '    1\n'
     >>> t('$if 1:\n    1\\')()
-    '1'
+    '    1'
     >>> t('$if 0: 0\n$elif 1: 1')()
     '1\n'
     >>> t('$if 0: 0\n$elif None: 0\n$else: 1')()
@@ -61,10 +65,14 @@ Test if, for and while.
     '1\n2\n3\n'
     >>> t('$def with (d)\n$for k, v in d.items(): $k')({1: 1})
     '1\n'
-    >>> t('$for x in [1, 2, 3]:\n\t$x')()
+    >>> t('$for x in [1, 2, 3]:\n    $x')()
     '    1\n    2\n    3\n'
     >>> t('$def with (a)\n$while a and a.pop():1')([1, 2, 3])
     '1\n1\n1\n'
+    >>> t('$for x in range(1, 5): $if x % 2 == 0: $x')()
+    '2\n4\n'
+    >>> t('$if False:\n  1\n$# comment\n  2')()
+    '  2\n'
 
 The space after : must be ignored.
 
@@ -91,11 +99,13 @@ Test assignment.
 Test comments.
 
     >>> t('$# 0')()
-    '\n'
+    ''
     >>> t('hello$#comment1\nhello$#comment2')()
     'hello\nhello\n'
     >>> t('$#comment0\nhello$#comment1\nhello$#comment2')()
-    '\nhello\nhello\n'
+    'hello\nhello\n'
+    >>> t('foo $# bar \\')()
+    'foo '
 
 Test unicode.
 
@@ -155,9 +165,9 @@ Make sure builtins are customizable.
 
 Test for with weird cases.
 
-    >>> t('$for i in range(10)[1:5]:\n    $i')()
+    >>> t('$for i in range(10)[1:5]: $i')()
     '1\n2\n3\n4\n'
-    >>> t("$for k, v in sorted({'a': 1, 'b': 2}.items()):\n    $k $v", globals={'sorted':sorted})()
+    >>> t("$for k, v in sorted({'a': 1, 'b': 2}.items()): $k $v", globals={'sorted':sorted})()
     'a 1\nb 2\n'
 
 Test for syntax error.
@@ -172,3 +182,19 @@ Test datetime.
     >>> import datetime
     >>> t("$def with (date)\n$date.strftime('%m %Y')")(datetime.datetime(2009, 1, 1))
     '01 2009\n'
+
+Test pathological cases.
+
+    >>> t("$def withf(): x\\\n$withf()")()
+    'x\n'
+    >>> t("$def with (date): pass #")
+    Traceback (most recent call last):
+        ...
+    IndentationError: unexpected indent
+
+Test `$code`.
+
+    >>> t("$code:\n    a = 2\n    a *= 3\n$a")()
+    '6\n'
+    >>> t("$code: a = 2\n    a *= 3\n$a")()
+    '    a *= 3\n2\n'

@@ -8,9 +8,6 @@ Template string is split into tokens and the tokens are combined into nodes.
 Parse tree is a nodelist. TextNode and ExpressionNode are simple nodes and
 for-loop, if-loop etc are block nodes, which contain multiple child nodes.
 
-Each node can emit some python string. python string emitted by the
-root node is executed using python in the given environment.
-
 Grammar:
 
     template -> defwith sections
@@ -25,548 +22,505 @@ Grammar:
     pyexpr -> <python expression>
 """
 
+import ast
 import builtins as stdlib_builtins
 import re
 import token
 import tokenize
+from dataclasses import dataclass
+from io import StringIO
 
 __all__ = [
     "Template",
     "ParseError",
 ]
 
-_INDENT_RE = re.compile("  +")
-_LINE_START_RE = re.compile("^", re.M)
+_LINE_PREFIX_RE = re.compile(r"(?P<indent> *)(?:\$(?P<special>#|\s+|(?:for|while|if|elif|else|def|code|pass|break|continue|return)\b))?")
 
+# `$` used intentionally over `\z`
+_HEADER_EOL_RE = re.compile(r"\s*(?:$|\$#)")
+_CODE_HEADER_EOL_RE = re.compile(r"\s*(?:$|#)")
 
-def splitline(text):
-    r"""
-    Splits the given text at newline.
-
-        >>> splitline('foo\nbar')
-        ('foo\n', 'bar')
-        >>> splitline('foo')
-        ('foo', '')
-        >>> splitline('')
-        ('', '')
-    """
-    index = text.find("\n") + 1
-    if index:
-        return text[:index], text[index:]
-    else:
-        return text, ""
+_NONSPACE = re.compile(r"\S")
 
 
 def _tokenize(line):
     return tokenize.generate_tokens(iter((line,)).__next__)
 
 
-class Parser:
+class Node:
 
-    def parse(self, text):
-        defwith, text = self.read_defwith(text)
-        suite = self.read_suite(text)
-        return DefwithNode(defwith, suite)
+    __slots__ = ()
 
-    def read_defwith(self, text):
-        if text.startswith("$def with"):
-            defwith, text = splitline(text)
-            defwith = defwith.removeprefix("$def with").strip()
-            return defwith, text
+    def emit_chained(self, else_chainable):
+        return self.emit()
+
+
+class BlockNode(Node):
+
+    __slots__ = ("children",)
+
+    def __init__(self):
+        self.children = []
+
+    def emit_children(self):
+        else_chainable = None
+
+        for child in self.children:
+            else_chainable = yield from child.emit_chained(else_chainable=else_chainable)
+
+    def append_text(self, text):
+        if not text:
+            return
+
+        children = self.children
+        if children and isinstance(children[-1], TextNode):
+            children[-1].value_parts.append(text)
         else:
-            return None, text
-
-    def read_section(self, text):
-        r"""Reads one section from the given text.
-
-        section -> block | assignment | line
-
-            >>> read_section = Parser().read_section
-            >>> read_section('foo\nbar\n')
-            (<line: [t'foo\n']>, 'bar\n')
-            >>> read_section('$ a = b + 1\nfoo\n')
-            (<assignment: 'a = b + 1'>, 'foo\n')
-        """
-        if text.lstrip(" ").startswith("$"):
-            index = text.index("$")
-            begin_indent, text2 = text[:index], text[index + 1 :]
-            ahead = self.python_lookahead(text2)
-
-            if ahead in STATEMENT_NODES:
-                return self.read_block_section(ahead, text2, begin_indent)
-            elif ahead in KEYWORDS:
-                return self.read_keyword(text2)
-            elif ahead.strip() == "":
-                # assignments starts with a space after $
-                # ex: $ a = b + 2
-                return self.read_assignment(text2)
-        return self.readline(text)
-
-    def read_suite(self, text):
-        r"""Reads section by section till end of text.
-
-        >>> read_suite = Parser().read_suite
-        >>> read_suite('hello $name\nfoo\n')
-        [<line: [t'hello ', $name, t'\n']>, <line: [t'foo\n']>]
-        """
-        sections = []
-        while text:
-            section, text = self.read_section(text)
-            sections.append(section)
-        return SuiteNode(sections)
-
-    def readline(self, text):
-        r"""Reads one line from the text. Newline is suppressed if the line ends with \.
-
-        >>> readline = Parser().readline
-        >>> readline('hello $name!\nbye!')
-        (<line: [t'hello ', $name, t'!\n']>, 'bye!')
-        >>> readline('hello $name!\\\nbye!')
-        (<line: [t'hello ', $name, t'!']>, 'bye!')
-        >>> readline('$f()\n\n')
-        (<line: [$f(), t'\n']>, '\n')
-        """
-        line, text = splitline(text)
-
-        # suppress new line if line ends with \
-        if line.endswith("\\\n"):
-            line = line[:-2]
-
-        nodes = []
-        while line:
-            node, line = self.read_node(line)
-            nodes.append(node)
-
-        return LineNode(nodes), text
-
-    def read_node(self, text):
-        r"""Reads a node from the given text and returns the node and remaining text.
-
-        >>> read_node = Parser().read_node
-        >>> read_node('hello $name')
-        (t'hello ', '$name')
-        >>> read_node('$name')
-        ($name, '')
-        """
-        if text.startswith("$$"):
-            return TextNode("$"), text[2:]
-        elif text.startswith("$#"):  # comment
-            line, text = splitline(text)
-            return TextNode("\n"), text
-        elif text.startswith("$"):
-            text = text[1:]  # strip $
-            if text.startswith(":"):
-                escape = False
-                text = text[1:]  # strip :
-            else:
-                escape = True
-            return self.read_expr(text, escape=escape)
-        else:
-            return self.read_text(text)
-
-    def read_text(self, text):
-        r"""Reads a text node from the given text.
-
-        >>> read_text = Parser().read_text
-        >>> read_text('hello $name')
-        (t'hello ', '$name')
-        """
-        index = text.find("$")
-        if index < 0:
-            return TextNode(text), ""
-        else:
-            return TextNode(text[:index]), text[index:]
-
-    def read_keyword(self, text):
-        line, text = splitline(text)
-        return StatementNode(line.strip() + "\n"), text
-
-    def read_expr(self, text, escape=True):
-        """Reads a python expression from the text and returns the expression and remaining text.
-
-        expr -> simple_expr | paren_expr
-        simple_expr -> id extended_expr
-        extended_expr -> attr_access | paren_expr extended_expr | ''
-        attr_access -> dot id extended_expr
-        paren_expr -> [ tokens ] | ( tokens ) | { tokens }
-
-            >>> read_expr = Parser().read_expr
-            >>> read_expr("name")
-            ($name, '')
-            >>> read_expr("a.b and c")
-            ($a.b, ' and c')
-            >>> read_expr("a. b")
-            ($a, '. b')
-            >>> read_expr("name</h1>")
-            ($name, '</h1>')
-            >>> read_expr("(limit)ing")
-            ($(limit), 'ing')
-            >>> read_expr("(limit)(ing)")
-            ($(limit), '(ing)')
-            >>> read_expr("f(limit)(ing).foo(bar) .baz")
-            ($f(limit)(ing).foo(bar), ' .baz')
-            >>> read_expr("limit(ing)")
-            ($limit(ing), '')
-            >>> read_expr("limit (ing)")
-            ($limit, ' (ing)')
-            >>> read_expr("limit{ing}")
-            ($limit{ing}, '')
-            >>> read_expr('a[1, 2][:3].f(1+2, "weird string[).", 3 + 4) done.')
-            ($a[1, 2][:3].f(1+2, "weird string[).", 3 + 4), ' done.')
-        """
-
-        def extended_expr(last):
-            try:
-                t = next(tokens)
-            except (StopIteration, tokenize.TokenError):
-                return last
-
-            if t.start != last.end:
-                # space
-                return last
-
-            if t.string == ".":
-                return attr_access(last, t.end)
-
-            if t.string in parens:
-                last = paren_expr(t.string)
-                return extended_expr(last)
-
-            return last
-
-        def attr_access(last, dot_end):
-            try:
-                t = next(tokens)
-            except (StopIteration, tokenize.TokenError):
-                pass
-            else:
-                if t.type == token.NAME and t.start == dot_end:
-                    return extended_expr(t)
-
-            return last
-
-        def paren_expr(begin):
-            end = parens[begin]
-            while True:
-                t = next(tokens)
-                if t.string == end:
-                    return t
-                if t.string in parens:
-                    paren_expr(t.string)
-
-        parens = {"(": ")", "[": "]", "{": "}"}
-
-        tokens = _tokenize(text)
-        t = next(tokens)
-
-        # get the last token of the expression
-        if t.string in parens:
-            last = paren_expr(t.string)
-        elif t.type == token.NAME:
-            last = extended_expr(t)  # inlined `simple_expr`
-        else:
-            # - f-strings tokenize differently across Python versions, so are hard to support
-            # - other useful initial tokens conflict with parens
-            # - obscure or useless initial tokens are probably mistakes
-            raise ParseError(f"Expected unbracketed interpolation expression to start with an identifier: {text!r}")
-
-        row, col = last.end
-        assert row == 1
-        return ExpressionNode(text[:col], escape=escape), text[col:]
-
-    def read_assignment(self, text):
-        r"""Reads assignment statement from text.
-
-        >>> read_assignment = Parser().read_assignment
-        >>> read_assignment('a = b + 1\nfoo')
-        (<assignment: 'a = b + 1'>, 'foo')
-        """
-        line, text = splitline(text)
-        return AssignmentNode(line.strip()), text
-
-    def python_lookahead(self, text):
-        """Returns the first python token from the given text.
-
-        >>> python_lookahead = Parser().python_lookahead
-        >>> python_lookahead('for i in range(10):')
-        'for'
-        >>> python_lookahead('else:')
-        'else'
-        >>> python_lookahead(' x = 1')
-        ' '
-        """
-        tokens = _tokenize(text)
-        return next(tokens)[1]
-
-    def read_indented_block(self, text, indent):
-        r"""Read a block of text. A block is what typically follows a for or if statement.
-        It can be in the same line as that of the statement or an indented block.
-
-            >>> read_indented_block = Parser().read_indented_block
-            >>> read_indented_block('  a\n  b\nc', '  ')
-            ('a\nb\n', 'c')
-            >>> read_indented_block('  a\n    b\n  c\nd', '  ')
-            ('a\n  b\nc\n', 'd')
-            >>> read_indented_block('  a\n\n    b\nc', '  ')
-            ('a\n\n  b\n', 'c')
-        """
-        if indent == "":
-            return "", text
-
-        block = ""
-        while text:
-            line, text2 = splitline(text)
-            if line.strip() == "":
-                block += "\n"
-            elif line.startswith(indent):
-                block += line[len(indent) :]
-            else:
-                break
-            text = text2
-        return block, text
-
-    def read_statement(self, text):
-        r"""Reads a python statement.
-
-        >>> read_statement = Parser().read_statement
-        >>> read_statement('for i in range(10): hello $name')
-        ('for i in range(10):', ' hello $name')
-        """
-        open = []
-
-        for t in _tokenize(text):
-            et = t.exact_type
-
-            match et:
-                case token.LPAR:
-                    open.append(token.RPAR)
-                case token.LSQB:
-                    open.append(token.RSQB)
-                case token.LBRACE:
-                    open.append(token.RBRACE)
-                case _ if open:
-                    if et == open[-1]:
-                        del open[-1]
-                case token.COLON:
-                    row, col = t.end
-                    assert row == 1
-                    return text[:col], text[col:]
-                case token.NEWLINE:
-                    break
-
-        raise ParseError("Expected clause header to end with a colon")
-
-    def read_block_section(self, keyword, text, begin_indent):
-        r"""
-            >>> read_block_section = Parser().read_block_section
-            >>> read_block_section('for', 'for i in range(10): hello $i\nfoo', begin_indent='')
-            (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, 'foo')
-            >>> read_block_section('for', 'for i in range(10):\n        hello $i\n    foo', begin_indent='    ')
-            (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, '    foo')
-            >>> read_block_section('for', 'for i in range(10):\n  hello $i\nfoo', begin_indent='')
-            (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, 'foo')
-
-        With inline comment:
-
-            >>> read_block_section('for', 'for i in range(10):  $# inline comment\n hello $i\nfoo', begin_indent='')
-            (<block: 'for i in range(10):', []>, ' hello $i\nfoo')
-        """
-        line, text = splitline(text)
-        stmt, line = self.read_statement(line)
-
-        # if there is some thing left in the line
-        if line.strip() and not line.lstrip().startswith("$#"):
-            block = line.lstrip()
-        else:
-
-            def find_indent(text):
-                match = _INDENT_RE.match(text)
-                first_indent = match and match.group(0)
-                return first_indent or ""
-
-            # find the indentation of the block by looking at the first line
-            first_indent = find_indent(text)[len(begin_indent) :]
-
-            # TODO: fix this special case
-            if keyword == "code":
-                indent = begin_indent + first_indent
-            else:
-                indent = begin_indent + min(first_indent, INDENT)
-
-            block, text = self.read_indented_block(text, indent)
-
-        return STATEMENT_NODES[keyword](stmt, block, begin_indent), text
+            children.append(TextNode(text))
 
 
-class DefwithNode:
-    def __init__(self, defwith, suite):
-        if defwith is not None:
-            self.defwith = f"def __template__{defwith}:"
-        else:
-            self.defwith = "def __template__():"
+@dataclass(eq=False, frozen=True, slots=True)
+class _ElseChainable:
 
-        self.defwith += "\n    __output = []; extend_ = __output.extend"
-        self.suite = suite
-        self.end = "\n    return ''.join(__output)"
-
-    def emit(self, indent):
-        return self.defwith + self.suite.emit(indent + INDENT) + self.end
-
-    def __repr__(self):
-        return f"<defwith: {self.defwith}, {self.suite}>"
+    indent: int | None
+    node: ast.AST
 
 
-class TextNode:
+class _empty_generator:
+
+    __slots__ = ("value",)
+
     def __init__(self, value):
         self.value = value
 
-    def emit(self, indent, begin_indent=""):
-        return repr(self.value)
+    def __iter__(self):
+        return self
+
+    def __next__(self):
+        raise StopIteration(self.value)
+
+
+class PythonBlockNode(BlockNode):
+
+    __slots__ = (
+        "block_type",
+        "header",
+        "linen0",
+        "indent",
+    )
+
+    def __init__(self, *, block_type, header, linen0, indent):
+        super().__init__()
+        self.block_type = block_type
+        self.header = header
+        self.linen0 = linen0
+        self.indent = indent
+
+    def emit_chained(self, else_chainable):
+        if self.block_type not in ["elif", "else"]:
+            return super().emit_chained(else_chainable)
+
+        if else_chainable is None or not hasattr(else_chainable.node, "orelse"):
+            raise ParseError("Unexpected elif/else")
+
+        if self.indent != else_chainable.indent:
+            raise ParseError("elif/else indent mismatch")
+
+        is_elif = self.block_type == "elif"
+        if is_elif and not isinstance(else_chainable.node, ast.If):
+            raise ParseError("Unexpected elif")
+
+        node = ast.parse(f"if ...:\n\t...\n{self.header}\n\t...").body[0]
+        ast.increment_lineno(node, self.linen0 - 2)
+
+        assert not else_chainable.node.orelse
+        else_chainable.node.orelse = node.orelse
+
+        if is_elif:
+            [elif_node] = node.orelse
+            assert isinstance(elif_node, ast.If)
+            body = elif_node.body
+        else:
+            body = node.orelse
+
+        body[:] = self.emit_children()
+
+        return _empty_generator(
+            _ElseChainable(indent=self.indent, node=elif_node)
+        ) if is_elif else ()
+
+    def emit_body(self):
+        return self.emit_children()
+
+    def emit(self):
+        node = ast.parse(f"{self.header}\n\t...").body[0]
+        ast.increment_lineno(node, self.linen0)
+        node.body[:] = self.emit_body()
+        yield node
+        return _ElseChainable(indent=self.indent, node=node)
+
+    def __repr__(self):
+        return f"<block: {self.header!r} {self.children!r}>"
+
+
+class DefNode(PythonBlockNode):
+
+    __slots__ = ()
+
+    def emit_body(self):
+        yield from ast.parse("__output = []; __append = __output.append").body
+        yield from self.emit_children()
+        yield ast.parse("return ''.join(__output)").body[0]
+
+
+def _append_call(expr):
+    return ast.Expr(ast.Call(ast.Name("__append"), args=[expr]), lineno=0, col_offset=0)
+
+
+class CodeNode(Node):
+
+    __slots__ = (
+        "template_source",
+        "start_offset",
+        "end_offset",
+        "start_linen0",
+        "body",
+    )
+
+    @classmethod
+    def begin(cls, *, template_source, start_offset, start_linen0):
+        self = cls()
+        self.template_source = template_source
+        self.start_offset = self.end_offset = start_offset
+        self.start_linen0 = start_linen0
+        return self
+
+    def end(self, *, same_line=False):
+        code = self.template_source[self.start_offset:self.end_offset]
+        self.template_source = None
+        # XXX: guide to multiline string literals in `$code` blocks: don't
+        func = ast.parse("def __code():" + (" " if same_line else "\n") + code).body[0]
+        ast.increment_lineno(func, self.start_linen0 - 1)
+        self.body = func.body
+
+    @classmethod
+    def with_body(cls, body):
+        self = cls()
+        self.body = body
+        return self
+
+    def emit(self):
+        return self.body
+
+
+@dataclass(eq=False, frozen=True, slots=True)
+class _StackEntry:
+
+    indent: int
+    """The number of spaces of indent."""
+
+    is_code: bool
+    """Whether the node is a `CodeNode`, i.e. contains Python instead of template syntax."""
+
+    node: BlockNode | CodeNode
+
+
+def parse(template_source, *, filename):
+    root = DefNode(block_type="def", header="def __template__():", linen0=-1, indent=-1)
+    stack = [_StackEntry(indent=-1, is_code=False, node=root)]
+    offset = 0
+
+    for linen0, line in enumerate(StringIO(template_source)):
+        offset += len(line)
+
+        if linen0 == 0 and (m := re.match(r"\$def with\s*\(", line)) is not None:
+            assert line.endswith("\n")
+            signature = line[m.end() - 1 : -1]
+            root.header = f"def __template__{signature}:"
+            root.linen0 = 0
+            continue
+
+        assert line
+        if line.isspace():  # blank lines are always inside the current block (even if they contain spaces that wouldn't form a sufficient indent)
+            top = stack[-1]
+            special = None
+        else:
+            line_prefix = _LINE_PREFIX_RE.match(line)
+            indent = line_prefix.end("indent")
+            special = line_prefix.group("special")
+            while (top := stack[-1]).indent >= indent:
+                del stack[-1]
+                if top.is_code:
+                    top.node.end()
+
+        if top.is_code:
+            top.node.end_offset = offset
+            continue
+
+        same_line_compound = False
+        top_node = top.node
+        del top
+
+        # XXX: quadratic time worst case; beware of single line with many compound statements
+        while True:
+            match special:
+                case None:  # normal text with interpolations/comment
+                    # trailing backslash suppresses newline
+                    if line.endswith("\\\n"):
+                        line = line[:-2]
+
+                    # XXX: quadratic time worst case; beware of single line with many interpolations
+                    start = 0
+                    while (i := line.find("$", start)) != -1:
+                        top_node.append_text(line[start:i])
+                        match line[i + 1 : i + 2]:
+                            case "$":  # escaped `$`
+                                top_node.append_text("$")
+                                start = i + 2
+                            case "#":  # comment
+                                if line.endswith("\n"):
+                                    top_node.append_text("\n")
+                                break
+                            case "\n" | "":
+                                raise ParseError("Expected '$', '#', or expression after '$'")
+                            case ahead:  # interpolation
+                                unescaped = ahead == ":"
+                                i += 2 if unescaped else 1
+                                start = i + _span_expr(line[i:])
+                                top_node.children.append(ExpressionNode(line[i : start], escape=not unescaped, linen0=linen0))
+                    else:
+                        top_node.append_text(line[start:])
+
+                case "code" | "for" | "while" | "if" | "elif" | "else" | "def" as block_type:
+                    is_code = block_type == "code"
+                    if is_code:
+                        header_end = line_prefix.end("special") + 1
+
+                        if line[header_end - 1 : header_end] != ":":
+                            raise ParseError("Expected ':' after '$code'")
+
+                        node = CodeNode.begin(template_source=template_source, start_offset=offset, start_linen0=linen0 + 1)
+                        eol_re = _CODE_HEADER_EOL_RE
+                    else:
+                        line = line[line_prefix.start("special"):]
+                        header_end = _span_clause_header(line)
+                        node_type = DefNode if block_type == "def" else PythonBlockNode
+                        node = node_type(block_type=block_type, header=line[:header_end], linen0=linen0, indent=indent)
+                        eol_re = _HEADER_EOL_RE
+
+                    top_node.children.append(node)
+
+                    if eol_re.match(line, header_end) is None:  # block is rest of line...
+                        same_line_compound = True
+                        rest_start = _NONSPACE.search(line, header_end).start()  # ... without leading spaces
+
+                        if is_code:
+                            node.start_offset = rest_start
+                            node.end_offset = offset
+                            node.end(same_line=True)
+                            break
+
+                        line = line[rest_start:]
+                        line_prefix = _LINE_PREFIX_RE.match(line)
+                        indent = None
+                        special = line_prefix.group("special")
+                        top_node = node
+                        continue
+
+                    # next line starts a block
+                    if same_line_compound:
+                        raise ParseError("Multiple compound statements on same line must finish on same line")
+
+                    stack.append(_StackEntry(indent=indent, is_code=is_code, node=node))
+
+                case "#":  # whole-line comment, doesn't produce blank line or interrupt `elif`/`else`
+                    pass
+
+                case _:
+                    # A statement line. Original documentation suggests /\$\s+/ was intended for assignment and the other keywords intended to stand alone, but any of them introduces a line that can contain any statement(s).
+                    statements = ast.parse(line[line_prefix.start("special"):].lstrip(), filename=filename)
+                    ast.increment_lineno(statements, linen0)
+                    top_node.children.append(CodeNode.with_body(statements.body))
+
+            break
+
+    top = stack[-1]
+    if top.is_code:
+        top.node.end()
+
+    return root
+
+
+def _span_clause_header(text):
+    r"""Reads Python tokens up to and including a colon.
+
+    >>> t = 'for i in range(10): hello $name'
+    >>> t[:_span_clause_header(t)]
+    'for i in range(10):'
+    """
+    open = []
+
+    for t in _tokenize(text):
+        et = t.exact_type
+
+        match et:
+            case token.LPAR:
+                open.append(token.RPAR)
+            case token.LSQB:
+                open.append(token.RSQB)
+            case token.LBRACE:
+                open.append(token.RBRACE)
+            case _ if open:
+                if et == open[-1]:
+                    del open[-1]
+            case token.COLON:
+                row, col = t.end
+                assert row == 1
+                return col
+            case token.NEWLINE:
+                break
+
+    raise ParseError("Expected clause header to end with a colon")
+
+
+def _span_expr(text):
+    """Reads a Python expression from the text.
+
+    expr -> simple_expr | paren_expr
+    simple_expr -> id extended_expr
+    extended_expr -> attr_access | paren_expr extended_expr | ''
+    attr_access -> dot id extended_expr
+    paren_expr -> [ tokens ] | ( tokens ) | { tokens }
+
+        >>> def read_expr(text): return text[:_span_expr(text)]
+        ...
+        >>> read_expr("name")
+        'name'
+        >>> read_expr("a.b and c")
+        'a.b'
+        >>> read_expr("a. b")
+        'a'
+        >>> read_expr("name</h1>")
+        'name'
+        >>> read_expr("(limit)ing")
+        '(limit)'
+        >>> read_expr("(limit)(ing)")
+        '(limit)'
+        >>> read_expr("f(limit)(ing).foo(bar) .baz")
+        'f(limit)(ing).foo(bar)'
+        >>> read_expr("limit(ing)")
+        'limit(ing)'
+        >>> read_expr("limit (ing)")
+        'limit'
+        >>> read_expr("limit{ing}")
+        'limit{ing}'
+        >>> read_expr('a[1, 2][:3].f(1+2, "weird string[).", 3 + 4) done.')
+        'a[1, 2][:3].f(1+2, "weird string[).", 3 + 4)'
+    """
+
+    def extended_expr(last):
+        try:
+            t = next(tokens)
+        except (StopIteration, tokenize.TokenError):
+            return last
+
+        if t.start != last.end:
+            # space
+            return last
+
+        if t.string == ".":
+            return attr_access(last, t.end)
+
+        if t.string in parens:
+            last = paren_expr(t.string)
+            return extended_expr(last)
+
+        return last
+
+    def attr_access(last, dot_end):
+        try:
+            t = next(tokens)
+        except (StopIteration, tokenize.TokenError):
+            pass
+        else:
+            if t.type == token.NAME and t.start == dot_end:
+                return extended_expr(t)
+
+        return last
+
+    def paren_expr(begin):
+        end = parens[begin]
+        while True:
+            t = next(tokens)
+            if t.string == end:
+                return t
+            if t.string in parens:
+                paren_expr(t.string)
+
+    parens = {"(": ")", "[": "]", "{": "}"}
+
+    tokens = _tokenize(text)
+    t = next(tokens)
+
+    # get the last token of the expression
+    if t.exact_type == token.LSQB:
+        raise ParseError("Unsupported `$[]` interpolation expression; use `$()` or `${}`")
+    elif t.string in parens:
+        last = paren_expr(t.string)
+    elif t.type == token.NAME:
+        last = extended_expr(t)  # inlined `simple_expr`
+    else:
+        # - f-strings tokenize differently across Python versions, so are hard to support
+        # - other useful initial tokens conflict with parens
+        # - obscure or useless initial tokens are probably mistakes
+        raise ParseError(f"Expected unbracketed interpolation expression to start with an identifier: {text!r}")
+
+    row, col = last.end
+    assert row == 1
+    return col
+
+
+class TextNode(Node):
+
+    __slots__ = ("value_parts",)
+
+    def __init__(self, value):
+        self.value_parts = [value]
+
+    @property
+    def value(self):
+        return "".join(self.value_parts)
+
+    def emit(self):
+        return (_append_call(ast.Constant(self.value)),)
 
     def __repr__(self):
         return f"t{self.value!r}"
 
 
-class ExpressionNode:
-    def __init__(self, value, escape=True):
-        self.value = value.strip()
+class ExpressionNode(Node):
 
-        # convert ${...} to $(...)
-        if value.startswith("{") and value.endswith("}"):
-            self.value = "(" + self.value[1:-1] + ")"
+    __slots__ = ("value", "escape", "linen0")
 
+    def __init__(self, value, *, escape, linen0):
+        # ${...}
+        if value.startswith("{"):
+            assert value.endswith("}")
+            value = value[1:-1]
+
+        self.value = ast.parse(value, mode="eval").body
         self.escape = escape
+        self.linen0 = linen0
 
-    def emit(self, indent, begin_indent=""):
-        return f"escape_({self.value}, {bool(self.escape)})"
-
-    def __repr__(self):
-        if self.escape:
-            escape = ""
-        else:
-            escape = ":"
-        return f"${escape}{self.value}"
-
-
-class AssignmentNode:
-    def __init__(self, code):
-        self.code = code
-
-    def emit(self, indent, begin_indent=""):
-        return indent + self.code + "\n"
+    def emit(self):
+        node = _append_call(ast.Call(ast.Name("escape_"), args=[self.value, ast.Constant(self.escape)]))
+        ast.increment_lineno(node, self.linen0)
+        return (node,)
 
     def __repr__(self):
-        return f"<assignment: {self.code!r}>"
-
-
-class LineNode:
-    def __init__(self, nodes):
-        self.nodes = nodes
-
-    def emit(self, indent, text_indent=""):
-        text = [node.emit("") for node in self.nodes]
-        if text_indent:
-            text = [repr(text_indent)] + text
-
-        return indent + "extend_([%s])\n" % ", ".join(text)
-
-    def __repr__(self):
-        return f"<line: {self.nodes!r}>"
-
-
-INDENT = "    "  # 4 spaces
-
-
-class BlockNode:
-    def __init__(self, stmt, block, begin_indent=""):
-        self.stmt = stmt
-        self.suite = Parser().read_suite(block)
-        self.begin_indent = begin_indent
-
-    def emit(self, indent, text_indent=""):
-        text_indent = self.begin_indent + text_indent
-        out = indent + self.stmt + self.suite.emit(indent + INDENT, text_indent)
-        return out
-
-    def __repr__(self):
-        return f"<block: {self.stmt!r}, {self.suite!r}>"
-
-
-class CodeNode:
-    def __init__(self, stmt, block, begin_indent=""):
-        self.code = block
-
-    def emit(self, indent, text_indent=""):
-        return _LINE_START_RE.sub(indent, self.code).rstrip(" ")
-
-    def __repr__(self):
-        return f"<code: {self.code!r}>"
-
-
-class StatementNode:
-    def __init__(self, stmt):
-        self.stmt = stmt
-
-    def emit(self, indent, begin_indent=""):
-        return indent + self.stmt
-
-    def __repr__(self):
-        return f"<stmt: {self.stmt!r}>"
-
-
-class IfNode(BlockNode):
-    pass
-
-
-class ElseNode(BlockNode):
-    pass
-
-
-class ElifNode(BlockNode):
-    pass
-
-
-class DefNode(BlockNode):
-    def __init__(self, *a, **kw):
-        super().__init__(*a, **kw)
-
-        code = CodeNode("", "")
-        code.code = "__output = []; extend_ = __output.extend\n"
-        self.suite.sections.insert(0, code)
-
-        code = CodeNode("", "")
-        code.code = "return ''.join(__output)\n"
-        self.suite.sections.append(code)
-
-    def emit(self, indent, text_indent=""):
-        text_indent = self.begin_indent + text_indent
-        return indent + self.stmt + self.suite.emit(indent + INDENT, text_indent)
-
-
-class SuiteNode:
-    """Suite is a list of sections."""
-
-    def __init__(self, sections):
-        self.sections = sections
-
-    def emit(self, indent, text_indent=""):
-        return "\n" + "".join([s.emit(indent, text_indent) for s in self.sections])
-
-    def __repr__(self):
-        return repr(self.sections)
-
-
-STATEMENT_NODES = {
-    "for": BlockNode,
-    "while": BlockNode,
-    "if": IfNode,
-    "elif": ElifNode,
-    "else": ElseNode,
-    "def": DefNode,
-    "code": CodeNode,
-}
-
-KEYWORDS = ["pass", "break", "continue", "return"]
+        escape = "" if self.escape else ":"
+        return f"${escape}({ast.unparse(self.value)})"
 
 
 class BaseTemplate:
@@ -597,7 +551,7 @@ class BaseTemplate:
             escape_=self._escape,
         )
 
-    def _escape(self, value, escape=False):
+    def _escape(self, value, escape):
         if value is None:
             return ""
 
@@ -653,15 +607,17 @@ class Template(BaseTemplate):
         return text
 
     @staticmethod
-    def _generate_code(text):
+    def _generate_code(text, *, filename):
         # parse the text
-        rootnode = Parser().parse(text)
+        rootnode = parse(text, filename=filename)
 
         # generate python code from the parse tree
-        return rootnode.emit(indent="").strip()
+        module = ast.Module(body=list(rootnode.emit()))
+        ast.fix_missing_locations(module)
+        return module
 
     def compile_template(self, template_string, filename):
-        code = Template._generate_code(template_string)
+        code = Template._generate_code(template_string, filename=filename)
 
         def get_source_line(lineno):
             lines = template_string.splitlines()

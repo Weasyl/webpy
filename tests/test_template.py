@@ -1,7 +1,7 @@
 import unittest
 from functools import partial
 
-from web.template import ExpressionNode, Parser, Template
+from web.template import Template
 
 
 class Item:
@@ -47,42 +47,3 @@ class TemplateTest(unittest.TestCase):
         template = "$def with (with_foo = 'with')\n$with_foo"
         f = t(template)
         assert f() == "with\n"
-
-
-class TestParser(unittest.TestCase):
-    """
-    Test the Parser.
-
-    Tests functions from the Parser class as if the following template were loaded:
-
-    test_template = '''$def with (back, docs)
-    <p><a href="$back">&larr; Back to Index</a></p>
-    <ul>
-    $for path, title in docs:
-        <li><a href="$path">$title</a></li>
-    </ul>
-    '''
-    """
-
-    def test_read_expr(self) -> None:
-        """
-        Test Parser.read_expr() with the `text` values it would get from
-        `Parser.read_node(), if processing `test_template`.
-        """
-        got = Parser().read_expr('back">&larr; Back to Index</a></p>\n')
-        expression_node = got[0]
-        assert isinstance(expression_node, ExpressionNode)
-        assert repr(expression_node) == "$back"
-        assert got[1] == '">&larr; Back to Index</a></p>\n'
-
-        got = Parser().read_expr('path">$title</a></li>\n')
-        expression_node = got[0]
-        assert isinstance(expression_node, ExpressionNode)
-        assert repr(expression_node) == "$path"
-        assert got[1] == '">$title</a></li>\n'
-
-        got = Parser().read_expr("title</a></li>\n")
-        expression_node = got[0]
-        assert isinstance(expression_node, ExpressionNode)
-        assert repr(expression_node) == "$title"
-        assert got[1] == "</a></li>\n"
