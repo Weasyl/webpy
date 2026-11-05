@@ -29,9 +29,7 @@ Grammar:
 """
 
 import builtins as stdlib_builtins
-import html
 import itertools
-import os
 import re
 import token
 import tokenize
@@ -662,34 +660,27 @@ class BaseTemplate:
             return ""
 
         value = str(value)
-        if escape and self.filter:
+        if escape:
             value = self.filter(value)
         return value
 
 
 class Template(BaseTemplate):
-    CONTENT_TYPES = {
-        ".html": "text/html; charset=utf-8",
-        ".xhtml": "application/xhtml+xml; charset=utf-8",
-        ".txt": "text/plain",
-    }
-    FILTERS = {".html": html.escape, ".xhtml": html.escape, ".xml": html.escape}
 
     def __init__(
         self,
         text,
+        *,
         filename="<template>",
-        filter=None,
+        filter,
         globals=None,
         builtins=None,
     ):
         text = Template.normalize_text(text)
         code = self.compile_template(text, filename)
 
-        _, ext = os.path.splitext(filename)
-        filter = filter or self.FILTERS.get(ext, None)
-        self.content_type = self.CONTENT_TYPES.get(ext, None)
-
+        if filter is None:
+            raise ValueError("template escaping filter must be specified (e.g. `html.escape`)")
         if globals is None:
             globals = {}
         if builtins is None:
@@ -705,7 +696,7 @@ class Template(BaseTemplate):
 
     def __repr__(self):
         """
-        >>> Template(text='Template text', filename='burndown_chart.html')
+        >>> Template(text='Template text', filename='burndown_chart.html', filter=...)
         <Template burndown_chart.html>
         """
         return f"<{self.__class__.__name__} {self.filename}>"
@@ -753,7 +744,8 @@ class ParseError(Exception):
 def test():
     r"""Doctest for testing template module.
 
-        >>> t = Template
+        >>> from functools import partial
+        >>> t = partial(Template, filter=lambda x: x)
 
     Simple tests.
 
@@ -781,11 +773,12 @@ def test():
         >>> t('$def with (a)\n$a.b[0]')(storage(b=[1]))
         '1\n'
 
-    Test html escaping.
+    Test escaping.
 
-        >>> t('$def with (x)\n$x', filename='a.html')('<html>')
+        >>> import html
+        >>> t('$def with (x)\n$x', filter=html.escape)('<html>')
         '&lt;html&gt;\n'
-        >>> t('$def with (x)\n$x', filename='a.txt')('<html>')
+        >>> t('$def with (x)\n$x')('<html>')
         '<html>\n'
 
     Test if, for and while.
