@@ -71,6 +71,10 @@ def splitline(text):
         return text, ""
 
 
+def _tokenize(line):
+    return tokenize.generate_tokens(iter((line,)).__next__)
+
+
 class Parser:
     """Parser Base."""
 
@@ -309,10 +313,8 @@ class Parser:
             """
 
             def tokenize_text(input_text):
-                i = iter([input_text])
-                readline = lambda: next(i)
                 end = None
-                for t in tokenize.generate_tokens(readline):
+                for t in _tokenize(input_text):
                     t = storage(type=t[0], value=t[1], begin=t[2], end=t[3])
                     if end is not None and end != t.begin:
                         _, x1 = end
@@ -383,15 +385,11 @@ class Parser:
         >>> python_lookahead(' x = 1')
         ' '
         """
-        i = iter([text])
-        readline = lambda: next(i)
-        tokens = tokenize.generate_tokens(readline)
+        tokens = _tokenize(text)
         return next(tokens)[1]
 
     def python_tokens(self, text):
-        i = iter([text])
-        readline = lambda: next(i)
-        tokens = tokenize.generate_tokens(readline)
+        tokens = _tokenize(text)
         return [t[1] for t in tokens]
 
     def read_indented_block(self, text, indent):
@@ -486,9 +484,7 @@ class PythonTokenizer:
 
     def __init__(self, text):
         self.text = text
-        i = iter([text])
-        readline = lambda: next(i)
-        self.tokens = tokenize.generate_tokens(readline)
+        self.tokens = _tokenize(text)
         self.index = 0
 
     def consume_till(self, delim):
