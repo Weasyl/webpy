@@ -29,6 +29,7 @@ Grammar:
 """
 
 import builtins as stdlib_builtins
+import html
 import itertools
 import os
 import re
@@ -37,8 +38,7 @@ import tokenize
 
 from more_itertools import peekable
 
-from .net import websafe
-from .utils import safeunicode, storage
+from .utils import storage
 
 __all__ = [
     "Template",
@@ -659,9 +659,9 @@ class BaseTemplate:
 
     def _escape(self, value, escape=False):
         if value is None:
-            value = ""
+            return ""
 
-        value = safeunicode(value)
+        value = str(value)
         if escape and self.filter:
             value = self.filter(value)
         return value
@@ -673,7 +673,7 @@ class Template(BaseTemplate):
         ".xhtml": "application/xhtml+xml; charset=utf-8",
         ".txt": "text/plain",
     }
-    FILTERS = {".html": websafe, ".xhtml": websafe, ".xml": websafe}
+    FILTERS = {".html": html.escape, ".xhtml": html.escape, ".xml": html.escape}
     globals = {}
 
     def __init__(

@@ -88,23 +88,3 @@ def storify(mapping, **defaults):
         stor[key] = value
 
     return stor
-
-
-def safestr(obj, encoding="utf-8"):
-    r"""
-    Converts any given object to utf-8 encoded string.
-
-        >>> safestr('hello')
-        'hello'
-        >>> safestr(2)
-        '2'
-    """
-
-    if obj and hasattr(obj, "__next__"):
-        return [safestr(i) for i in obj]
-    else:
-        return str(obj)
-
-
-# Since Python3, utf-8 encoded strings and unicode strings are the same thing
-safeunicode = safestr
