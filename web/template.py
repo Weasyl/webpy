@@ -641,7 +641,7 @@ class BaseTemplate:
             self.t = lambda: ""
 
     def _compile(self, code):
-        env = self.make_env(self._globals or {}, self._builtins)
+        env = self.make_env(self._globals, self._builtins)
         exec(code, env)
         # __template__ is a global function declared when executing "code"
         return env["__template__"]
@@ -674,7 +674,6 @@ class Template(BaseTemplate):
         ".txt": "text/plain",
     }
     FILTERS = {".html": html.escape, ".xhtml": html.escape, ".xml": html.escape}
-    globals = {}
 
     def __init__(
         self,
@@ -692,7 +691,7 @@ class Template(BaseTemplate):
         self.content_type = self.CONTENT_TYPES.get(ext, None)
 
         if globals is None:
-            globals = self.globals
+            globals = {}
         if builtins is None:
             builtins = stdlib_builtins
 
