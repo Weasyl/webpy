@@ -104,7 +104,7 @@ class Parser:
             ahead = self.python_lookahead(text2)
 
             if ahead in self.statement_nodes:
-                return self.read_block_section(text2, begin_indent)
+                return self.read_block_section(ahead, text2, begin_indent)
             elif ahead in self.keywords:
                 return self.read_keyword(text2)
             elif ahead.strip() == "":
@@ -367,24 +367,23 @@ class Parser:
 
         raise ParseError("Expected clause header to end with a colon")
 
-    def read_block_section(self, text, begin_indent=""):
+    def read_block_section(self, keyword, text, begin_indent):
         r"""
             >>> read_block_section = Parser().read_block_section
-            >>> read_block_section('for i in range(10): hello $i\nfoo')
+            >>> read_block_section('for', 'for i in range(10): hello $i\nfoo', begin_indent='')
             (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, 'foo')
-            >>> read_block_section('for i in range(10):\n        hello $i\n    foo', begin_indent='    ')
+            >>> read_block_section('for', 'for i in range(10):\n        hello $i\n    foo', begin_indent='    ')
             (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, '    foo')
-            >>> read_block_section('for i in range(10):\n  hello $i\nfoo')
+            >>> read_block_section('for', 'for i in range(10):\n  hello $i\nfoo', begin_indent='')
             (<block: 'for i in range(10):', [<line: [t'hello ', $i, t'\n']>]>, 'foo')
 
         With inline comment:
 
-            >>> read_block_section('for i in range(10):  $# inline comment\n hello $i\nfoo')
+            >>> read_block_section('for', 'for i in range(10):  $# inline comment\n hello $i\nfoo', begin_indent='')
             (<block: 'for i in range(10):', []>, ' hello $i\nfoo')
         """
         line, text = splitline(text)
         stmt, line = self.read_statement(line)
-        keyword = self.python_lookahead(stmt)
 
         # if there is some thing left in the line
         if line.strip() and not line.lstrip().startswith("$#"):
@@ -407,13 +406,7 @@ class Parser:
 
             block, text = self.read_indented_block(text, indent)
 
-        return self.create_block_node(keyword, stmt, block, begin_indent), text
-
-    def create_block_node(self, keyword, stmt, block, begin_indent):
-        if keyword in self.statement_nodes:
-            return self.statement_nodes[keyword](stmt, block, begin_indent)
-        else:
-            raise ParseError("Unknown statement: %s" % repr(keyword))
+        return self.statement_nodes[keyword](stmt, block, begin_indent), text
 
 
 class DefwithNode:
