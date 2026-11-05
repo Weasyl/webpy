@@ -3,11 +3,9 @@ import unittest
 from web.template import ExpressionNode, Parser, Template
 
 
-class TestItem:
-    __test__ = False  # silence collection warning from test framework
+class Item:
 
-    def __init__(self):
-        self.id = 12345
+    id = 12345
 
 
 class TemplateTest(unittest.TestCase):
@@ -28,12 +26,12 @@ class TemplateTest(unittest.TestCase):
 
     def test_accessor(self):
         template = 'a="$foo.id"<p>'
-        f = Template(template, globals={"foo": TestItem()})
+        f = Template(template, globals={"foo": Item()})
         assert f() == 'a="12345"<p>\n'
 
     def test_href(self):
         template = '<a href="/del/$item.id">Delete</a>'
-        f = Template(template, globals={"item": TestItem()})
+        f = Template(template, globals={"item": Item()})
         assert f() == '<a href="/del/12345">Delete</a>\n'
 
     def test_compat_escape_in_literal(self):
