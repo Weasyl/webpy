@@ -439,7 +439,7 @@ class TextNode:
         return repr(self.value)
 
     def __repr__(self):
-        return "t" + repr(self.value)
+        return f"t{self.value!r}"
 
 
 class ExpressionNode:
@@ -471,7 +471,7 @@ class AssignmentNode:
         return indent + self.code + "\n"
 
     def __repr__(self):
-        return "<assignment: %s>" % repr(self.code)
+        return f"<assignment: {self.code!r}>"
 
 
 class LineNode:
@@ -486,7 +486,7 @@ class LineNode:
         return indent + "extend_([%s])\n" % ", ".join(text)
 
     def __repr__(self):
-        return "<line: %s>" % repr(self.nodes)
+        return f"<line: {self.nodes!r}>"
 
 
 INDENT = "    "  # 4 spaces
@@ -504,7 +504,7 @@ class BlockNode:
         return out
 
     def __repr__(self):
-        return f"<block: {repr(self.stmt)}, {repr(self.suite)}>"
+        return f"<block: {self.stmt!r}, {self.suite!r}>"
 
 
 class CodeNode:
@@ -516,7 +516,7 @@ class CodeNode:
         return _LINE_START_RE.sub(indent, self.code).rstrip(" ")
 
     def __repr__(self):
-        return "<code: %s>" % repr(self.code)
+        return f"<code: {self.code!r}>"
 
 
 class StatementNode:
@@ -527,7 +527,7 @@ class StatementNode:
         return indent + self.stmt
 
     def __repr__(self):
-        return "<stmt: %s>" % repr(self.stmt)
+        return f"<stmt: {self.stmt!r}>"
 
 
 class IfNode(BlockNode):
@@ -689,7 +689,7 @@ class Template(BaseTemplate):
             compiled_code = compile(code, filename, "exec")
         except SyntaxError as err:
             # display template line that caused the error along with the traceback.
-            err.msg += f"\n\nTemplate traceback:\n    File {repr(err.filename)}, line {err.lineno}\n        {get_source_line(err.lineno)}"
+            err.msg += f"\n\nTemplate traceback:\n    File {err.filename!r}, line {err.lineno}\n        {get_source_line(err.lineno)}"
 
             raise
 

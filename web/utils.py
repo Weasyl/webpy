@@ -35,7 +35,7 @@ class Storage(dict):
             raise AttributeError(k)
 
     def __repr__(self):
-        return "<Storage " + super().__repr__() + ">"
+        return f"<Storage {super().__repr__()}>"
 
 
 storage = Storage
