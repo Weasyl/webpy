@@ -1,6 +1,6 @@
     >>> from functools import partial
     >>> from web.template import Template
-    >>> from web.utils import storage
+    >>> from web.utils import Storage
     >>> t = partial(Template, filter=lambda x: x)
 
 Simple tests.
@@ -26,7 +26,7 @@ Test complicated expressions.
     '26\n'
     >>> t('$def with (limit)\nkeep $(limit)ing.')('go')
     'keep going.\n'
-    >>> t('$def with (a)\n$a.b[0]')(storage(b=[1]))
+    >>> t('$def with (a)\n$a.b[0]')(Storage(b=[1]))
     '1\n'
     >>> t('$[1,2][0]')()  # `$[]` is an interpolation delimeter, but not rewritten to `()` like `${}`. unclear purpose.
     '[1, 2][0]\n'

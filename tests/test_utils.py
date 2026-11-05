@@ -13,7 +13,7 @@ class TestStorify:
         assert utils.storify({}, a=[]).a == []
 
     def test_storify_with_a_unicode_file_value(self):
-        assert utils.storify({"a": utils.storage(value=1)}).a == 1
+        assert utils.storify({"a": utils.Storage(value=1)}).a == 1
 
     def test_storify_with_a_binary_file_value(self):
         # Prepare some raw multipart data with a binary file attachment

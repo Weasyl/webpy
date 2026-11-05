@@ -3,7 +3,7 @@ class Storage(dict):
     A Storage object is like a dictionary except `obj.foo` can be used
     in addition to `obj['foo']`.
 
-        >>> o = storage(a=1)
+        >>> o = Storage(a=1)
         >>> o.a
         1
         >>> o['a']
@@ -38,16 +38,13 @@ class Storage(dict):
         return f"<Storage {super().__repr__()}>"
 
 
-storage = Storage
-
-
 def storify(mapping, **defaults):
     """
-    Creates a `storage` object from dictionary `mapping`, using the default
+    Creates a `Storage` object from dictionary `mapping`, using the default
     values for keys found in `defaults`.
 
     For example, `storify({'a':1, 'c':3}, b=2, c=0)` will return the equivalent of
-    `storage({'a':1, 'b':2, 'c':3})`.
+    `Storage({'a':1, 'b':2, 'c':3})`.
 
     If a `storify` value is a list (e.g. multiple values in a form submission),
     `storify` returns the last element of the list, unless the key appears in
@@ -64,7 +61,7 @@ def storify(mapping, **defaults):
 
     Similarly, if the value has a `value` attribute, `storify` will return _its_ value.
 
-        >>> storify({'a':storage(value=1)}).a
+        >>> storify({'a':Storage(value=1)}).a
         1
 
     """
