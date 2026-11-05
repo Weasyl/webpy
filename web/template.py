@@ -90,10 +90,10 @@ class Parser:
     def read_defwith(self, text):
         if text.startswith("$def with"):
             defwith, text = splitline(text)
-            defwith = defwith[1:].strip()  # strip $ and spaces
+            defwith = defwith.removeprefix("$def with").strip()
             return defwith, text
         else:
-            return "", text
+            return None, text
 
     def read_section(self, text):
         r"""Reads one section from the given text.
@@ -454,8 +454,8 @@ class Parser:
 
 class DefwithNode:
     def __init__(self, defwith, suite):
-        if defwith:
-            self.defwith = defwith.replace("with", "__template__") + ":"
+        if defwith is not None:
+            self.defwith = f"def __template__{defwith}:"
             # offset 2 lines for _lineoffset_ and self.
             self.defwith += "\n    _lineoffset_ = -2"
         else:

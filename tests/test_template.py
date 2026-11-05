@@ -39,6 +39,11 @@ class TemplateTest(unittest.TestCase):
         f = Template(template)
         assert f() == "\\$foo $$bar\n"
 
+    def test_with_in_def_parameters(self):
+        template = "$def with (with_foo = 'with')\n$with_foo"
+        f = Template(template)
+        assert f() == "with\n"
+
 
 class TestParser(unittest.TestCase):
     """
