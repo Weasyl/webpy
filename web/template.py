@@ -50,6 +50,7 @@ __all__ = [
 from collections.abc import MutableMapping
 
 _INDENT_RE = re.compile("  +")
+_LINE_START_RE = re.compile("^", re.M)
 
 
 def splitline(text):
@@ -282,9 +283,7 @@ class Parser:
                 return
 
         def attr_access():
-            from token import NAME  # python token constants
-
-            if tokens[1].type == NAME:
+            if tokens[1].type == token.NAME:
                 next(tokens)  # consume dot
                 identifier()
                 extended_expr()
@@ -638,10 +637,7 @@ class CodeNode:
         self.code = "\n" + block
 
     def emit(self, indent, text_indent=""):
-        import re
-
-        rx = re.compile("^", re.M)
-        return rx.sub(indent, self.code).rstrip(" ")
+        return _LINE_START_RE.sub(indent, self.code).rstrip(" ")
 
     def __repr__(self):
         return "<code: %s>" % repr(self.code)
