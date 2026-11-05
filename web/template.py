@@ -1470,14 +1470,13 @@ def test():
 
     Test for syntax error.
 
-        >>> try:
-        ...     t("$for k, v in ({'a': 1, 'b': 2}.items():\n    $k $v")()
-        ... except SyntaxError:
-        ...     print("OK")
-        ... else:
-        ...     print("Expected SyntaxError")
-        ...
-        OK
+        >>> t("$for k, v in ({'a': 1, 'b': 2}.items():\n    $k $v")()
+        Traceback (most recent call last):
+            ...
+        SyntaxError: invalid syntax
+        <BLANKLINE>
+        Template traceback:
+            ...
 
     Test datetime.
 

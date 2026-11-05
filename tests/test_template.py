@@ -11,47 +11,31 @@ class TestItem:
         self.id = 12345
 
 
-class _TestResult:
-    def __init__(self, t):
-        self.t = t
-
-    def __getattr__(self, name):
-        return getattr(self.t, name)
-
-    def __repr__(self):
-        return repr(str(self.t))
-
-
-def t(code, **keywords):
-    tmpl = Template(code, **keywords)
-    return lambda *a, **kw: _TestResult(tmpl(*a, **kw))
-
-
 class TemplateTest(unittest.TestCase):
 
     def testAttr(self):
-        t("$code:\n    foo = {'a': 1}.items()")()
-        t("$code:\n    bar = {k:0 for k in [1,2,3]}")()
+        Template("$code:\n    foo = {'a': 1}.items()")()
+        Template("$code:\n    bar = {k:0 for k in [1,2,3]}")()
 
     def test_overridden(self):
-        tpl = "$print('blah')"
-        f = t(tpl, globals={"print": lambda x: x})
-        assert repr(f()) == "'blah\\n'"
+        template = "$print('blah')"
+        f = Template(template, globals={"print": lambda x: x})
+        assert str(f()) == "blah\n"
 
     def test_quotes(self):
         template = 'a="$foo" <p>'
-        f = t(template, globals={"foo": "bar"})
-        assert repr(f()) == "'a=\"bar\" <p>\\n'"
+        f = Template(template, globals={"foo": "bar"})
+        assert str(f()) == 'a="bar" <p>\n'
 
     def test_accessor(self):
         template = 'a="$foo.id"<p>'
-        f = t(template, globals={"foo": TestItem()})
-        assert repr(f()) == "'a=\"12345\"<p>\\n'"
+        f = Template(template, globals={"foo": TestItem()})
+        assert str(f()) == 'a="12345"<p>\n'
 
     def test_href(self):
         template = '<a href="/del/$item.id">Delete</a>'
-        f = t(template, globals={"item": TestItem()})
-        assert repr(f()) == "'<a href=\"/del/12345\">Delete</a>\\n'"
+        f = Template(template, globals={"item": TestItem()})
+        assert str(f()) == '<a href="/del/12345">Delete</a>\n'
 
 
 class TestParser(unittest.TestCase):
