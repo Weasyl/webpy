@@ -2,8 +2,6 @@ import re
 import threading
 import time
 
-from .py3helpers import iteritems
-
 __all__ = [
     "Storage",
     "storage",
@@ -51,7 +49,7 @@ class Storage(dict):
             raise AttributeError(k)
 
     def __repr__(self):
-        return "<Storage " + dict.__repr__(self) + ">"
+        return "<Storage " + super().__repr__() + ">"
 
 
 storage = Storage
@@ -111,7 +109,7 @@ def storify(mapping, *requireds, **defaults):
 
         setattr(stor, key, value)
 
-    for key, value in iteritems(defaults):
+    for key, value in defaults.items():
         result = value
         if hasattr(stor, key):
             result = stor[key]
@@ -169,7 +167,7 @@ def timelimit(timeout):
         def _2(*args, **kw):
             class Dispatch(threading.Thread):
                 def __init__(self):
-                    threading.Thread.__init__(self)
+                    super().__init__()
                     self.result = None
                     self.error = None
 

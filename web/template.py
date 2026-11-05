@@ -37,7 +37,7 @@ import tokenize
 from more_itertools import peekable
 
 from .net import websafe
-from .utils import re_compile, safestr, safeunicode, storage
+from .utils import re_compile, safeunicode, storage
 
 __all__ = [
     "Template",
@@ -560,7 +560,7 @@ class TextNode:
         self.value = value
 
     def emit(self, indent, begin_indent=""):
-        return repr(safeunicode(self.value))
+        return repr(self.value)
 
     def __repr__(self):
         return "t" + repr(self.value)
@@ -639,7 +639,7 @@ class ForNode(BlockNode):
         a = stmt[: tok.index]  # for i in
         b = stmt[tok.index : -1]  # rest of for stmt excluding :
         stmt = a + " loop.setup(" + b.strip() + "):"
-        BlockNode.__init__(self, stmt, block, begin_indent)
+        super().__init__(stmt, block, begin_indent)
 
     def __repr__(self):
         return f"<block: {repr(self.original_stmt)}, {repr(self.suite)}>"
@@ -685,7 +685,7 @@ class ElifNode(BlockNode):
 
 class DefNode(BlockNode):
     def __init__(self, *a, **kw):
-        BlockNode.__init__(self, *a, **kw)
+        super().__init__(*a, **kw)
 
         code = CodeNode("", "")
         code.code = "self = TemplateResult(); extend_ = self.extend\n"
@@ -880,8 +880,7 @@ class Template(BaseTemplate):
         if builtins is None:
             builtins = stdlib_builtins
 
-        BaseTemplate.__init__(
-            self,
+        super().__init__(
             code=code,
             filename=filename,
             filter=filter,
@@ -896,6 +895,7 @@ class Template(BaseTemplate):
         """
         return f"<{self.__class__.__name__} {self.filename}>"
 
+    @staticmethod
     def normalize_text(text):
         """Normalizes template text by correcting \r\n, tabs and BOM chars."""
         text = text.replace("\r\n", "\n").replace("\r", "\n").expandtabs()
@@ -909,18 +909,14 @@ class Template(BaseTemplate):
 
         return text
 
-    normalize_text = staticmethod(normalize_text)
-
+    @staticmethod
     def generate_code(text, filename, parser=None):
         # parse the text
         parser = parser or Parser()
         rootnode = parser.parse(text, filename)
 
         # generate python code from the parse tree
-        code = rootnode.emit(indent="").strip()
-        return safestr(code)
-
-    generate_code = staticmethod(generate_code)
+        return rootnode.emit(indent="").strip()
 
     def create_parser(self):
         p = Parser()
@@ -1033,10 +1029,6 @@ class TemplateResult(MutableMapping):
             del self[key]
         except KeyError as k:
             raise AttributeError(k)
-
-    def __unicode__(self):
-        self._prepare_body()
-        return self["__body__"]
 
     def __str__(self):
         self._prepare_body()
