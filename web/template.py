@@ -867,9 +867,7 @@ class Template(BaseTemplate):
         filter=None,
         globals=None,
         builtins=None,
-        extensions=None,
     ):
-        self.extensions = extensions or []
         text = Template.normalize_text(text)
         code = self.compile_template(text, filename)
 
@@ -912,24 +910,15 @@ class Template(BaseTemplate):
         return text
 
     @staticmethod
-    def generate_code(text, filename, parser=None):
+    def _generate_code(text, filename):
         # parse the text
-        parser = parser or Parser()
-        rootnode = parser.parse(text, filename)
+        rootnode = Parser().parse(text, filename)
 
         # generate python code from the parse tree
         return rootnode.emit(indent="").strip()
 
-    def create_parser(self):
-        p = Parser()
-        for ext in self.extensions:
-            p = ext(p)
-        return p
-
     def compile_template(self, template_string, filename):
-        code = Template.generate_code(
-            template_string, filename, parser=self.create_parser()
-        )
+        code = Template._generate_code(template_string, filename)
 
         def get_source_line(filename, lineno):
             try:
