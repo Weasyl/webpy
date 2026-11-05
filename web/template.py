@@ -455,14 +455,14 @@ def _span_expr(text):
     def paren_expr(begin):
         end = _PARENS[begin]
         while True:
-            t = next(tokens)
+            t = next(tokens, None)
             if t.exact_type == end:
                 return t
             if t.exact_type in _PARENS:
                 paren_expr(t.exact_type)
 
     tokens = _tokenize(text)
-    t = next(tokens)
+    t = next(tokens, None)
 
     # get the last token of the expression
     if t.exact_type == token.LSQB:
