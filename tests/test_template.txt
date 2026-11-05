@@ -28,6 +28,12 @@ Test complicated expressions.
     'keep going.\n'
     >>> t('$def with (a)\n$a.b[0]')(storage(b=[1]))
     '1\n'
+    >>> t('$[1,2][0]')()  # `$[]` is an interpolation delimeter, but not rewritten to `()` like `${}`. unclear purpose.
+    '[1, 2][0]\n'
+    >>> t('$f"{1}"')
+    Traceback (most recent call last):
+        ...
+    web.template.ParseError: Expected unbracketed interpolation expression to start with an identifier: 'f"{1}"\n'
 
 Test escaping.
 

@@ -29,14 +29,9 @@ Grammar:
 """
 
 import builtins as stdlib_builtins
-import itertools
 import re
 import token
 import tokenize
-
-from more_itertools import peekable
-
-from .utils import storage
 
 __all__ = [
     "Template",
@@ -197,7 +192,7 @@ class Parser:
         line, text = splitline(text)
         return StatementNode(line.strip() + "\n"), text
 
-    def read_expr(self, text, escape=True):  # noqa: C901, PLR0915
+    def read_expr(self, text, escape=True):
         """Reads a python expression from the text and returns the expression and remaining text.
 
         expr -> simple_expr | paren_expr
@@ -217,105 +212,77 @@ class Parser:
             ($name, '</h1>')
             >>> read_expr("(limit)ing")
             ($(limit), 'ing')
+            >>> read_expr("(limit)(ing)")
+            ($(limit), '(ing)')
+            >>> read_expr("f(limit)(ing).foo(bar) .baz")
+            ($f(limit)(ing).foo(bar), ' .baz')
+            >>> read_expr("limit(ing)")
+            ($limit(ing), '')
+            >>> read_expr("limit (ing)")
+            ($limit, ' (ing)')
+            >>> read_expr("limit{ing}")
+            ($limit{ing}, '')
             >>> read_expr('a[1, 2][:3].f(1+2, "weird string[).", 3 + 4) done.')
             ($a[1, 2][:3].f(1+2, "weird string[).", 3 + 4), ' done.')
         """
 
-        def simple_expr():
-            identifier()
-            extended_expr()
+        def extended_expr(last):
+            try:
+                t = next(tokens)
+            except (StopIteration, tokenize.TokenError):
+                return last
 
-        def identifier():
-            return next(tokens)
+            if t.start != last.end:
+                # space
+                return last
 
-        def extended_expr():
-            lookahead = tokens.peek()
-            if lookahead is None:
-                return
-            elif lookahead.value == ".":
-                attr_access()
-            elif lookahead.value in parens:
-                paren_expr()
-                extended_expr()
+            if t.string == ".":
+                return attr_access(last, t.end)
+
+            if t.string in parens:
+                last = paren_expr(t.string)
+                return extended_expr(last)
+
+            return last
+
+        def attr_access(last, dot_end):
+            try:
+                t = next(tokens)
+            except (StopIteration, tokenize.TokenError):
+                pass
             else:
-                return
+                if t.type == token.NAME and t.start == dot_end:
+                    return extended_expr(t)
 
-        def attr_access():
-            if tokens[1].type == token.NAME:
-                next(tokens)  # consume dot
-                identifier()
-                extended_expr()
+            return last
 
-        def paren_expr():
-            begin = next(tokens).value
+        def paren_expr(begin):
             end = parens[begin]
             while True:
-                if tokens.peek().value in parens:
-                    paren_expr()
-                else:
-                    t = next(tokens)
-                    if t.value == end:
-                        break
+                t = next(tokens)
+                if t.string == end:
+                    return t
+                if t.string in parens:
+                    paren_expr(t.string)
 
         parens = {"(": ")", "[": "]", "{": "}"}
 
-        def get_tokens(text: str):
-            """tokenize text using python tokenizer.
-            Python tokenizer ignores spaces, but they might be important in some cases.
-            This function introduces dummy space tokens when it identifies any ignored space.
-            Each token is a storage object containing type, value, begin and end.
-            """
+        tokens = _tokenize(text)
+        t = next(tokens)
 
-            def tokenize_text(input_text):
-                end = None
-                for t in _tokenize(input_text):
-                    t = storage(type=t[0], value=t[1], begin=t[2], end=t[3])
-                    if end is not None and end != t.begin:
-                        _, x1 = end
-                        _, x2 = t.begin
-                        yield storage(
-                            type=-1, value=input_text[x1:x2], begin=end, end=t.begin
-                        )
-                    end = t.end
-                    yield t
-
-            try:
-                yield from tokenize_text(text)
-            except tokenize.TokenError as e:
-                # Things like unterminated string literals or EOF in multi-line literals will raise exceptions
-                # tokenize the error free portion, then return an error token with the rest of the text
-                error_pos = e.args[1][1] - 1
-                fixed_text = text[0:error_pos]
-                yield from itertools.chain(
-                    tokenize_text(fixed_text),
-                    error_token_generator(text, error_pos + 1, len(text)),
-                )
-
-        def error_token_generator(text, start, end):
-            yield storage(
-                type=token.ERRORTOKEN, value=text[start:], begin=start, end=end
-            )
-
-        class peekable2(peekable):
-            """
-            A peekable class which caches the last item returned by next()
-            """
-
-            def __init__(self, iterable):
-                super().__init__(iterable)
-                self.current_item = None
-
-            def __next__(self):
-                self.current_item = super().__next__()
-                return self.current_item
-
-        tokens = peekable2(get_tokens(text))
-
-        if tokens.peek().value in parens:
-            paren_expr()
+        # get the last token of the expression
+        if t.string in parens:
+            last = paren_expr(t.string)
+        elif t.type == token.NAME:
+            last = extended_expr(t)  # inlined `simple_expr`
         else:
-            simple_expr()
-        row, col = tokens.current_item.end
+            # - f-strings tokenize differently across Python versions, so are hard to support
+            # - other useful initial tokens conflict with parens
+            # - obscure or useless initial tokens are probably mistakes
+            raise ParseError(f"Expected unbracketed interpolation expression to start with an identifier: {text!r}")
+
+        row, col = last.end
+        assert row == 1
         return ExpressionNode(text[:col], escape=escape), text[col:]
 
     def read_assignment(self, text):

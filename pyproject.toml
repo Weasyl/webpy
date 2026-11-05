@@ -7,9 +7,6 @@ requires = [
 [project]
 name = "weasyl-old-templates"
 version = "1.0.0"
-dependencies = [
-  "more_itertools>=2.6",
-]
 
 [tool.setuptools]
 packages = [ "web" ]
