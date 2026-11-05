@@ -31,13 +31,14 @@ Grammar:
 import builtins as stdlib_builtins
 import itertools
 import os
+import re
 import token
 import tokenize
 
 from more_itertools import peekable
 
 from .net import websafe
-from .utils import re_compile, safeunicode, storage
+from .utils import safeunicode, storage
 
 __all__ = [
     "Template",
@@ -47,6 +48,8 @@ __all__ = [
 
 
 from collections.abc import MutableMapping
+
+_INDENT_RE = re.compile("  +")
 
 
 def splitline(text):
@@ -455,8 +458,7 @@ class Parser:
         else:
 
             def find_indent(text):
-                rx = re_compile("  +")
-                match = rx.match(text)
+                match = _INDENT_RE.match(text)
                 first_indent = match and match.group(0)
                 return first_indent or ""
 
