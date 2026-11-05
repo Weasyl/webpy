@@ -29,15 +29,7 @@ lint.select = [
   "W",
 ]
 lint.ignore = [
-  "E722",
-  "E731",
-  "F821",
-  "PLC0415",
-  "PLR5501",
   "UP031",
 ]
 lint.mccabe.max-complexity = 20
 lint.pylint.allow-magic-value-types = [ "int", "str" ]
-lint.pylint.max-args = 9 # default is 5
-lint.pylint.max-branches = 17 # default is 12
-lint.pylint.max-returns = 8 # default is 6
