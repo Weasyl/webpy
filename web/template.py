@@ -352,6 +352,13 @@ def parse(template_source, *, filename):
     return root
 
 
+_PARENS = {
+    token.LPAR: token.RPAR,
+    token.LSQB: token.RSQB,
+    token.LBRACE: token.RBRACE,
+}
+
+
 def _span_clause_header(text):
     r"""Reads Python tokens up to and including a colon.
 
@@ -364,13 +371,9 @@ def _span_clause_header(text):
     for t in _tokenize(text):
         et = t.exact_type
 
-        match et:
-            case token.LPAR:
-                open.append(token.RPAR)
-            case token.LSQB:
-                open.append(token.RSQB)
-            case token.LBRACE:
-                open.append(token.RBRACE)
+        match t.exact_type:
+            case _ if et in _PARENS:
+                open.append(_PARENS[et])
             case _ if open:
                 if et == open[-1]:
                     del open[-1]
@@ -432,8 +435,8 @@ def _span_expr(text):
         if t.string == ".":
             return attr_access(last, t.end)
 
-        if t.string in parens:
-            last = paren_expr(t.string)
+        if t.exact_type in _PARENS:
+            last = paren_expr(t.exact_type)
             return extended_expr(last)
 
         return last
@@ -450,15 +453,13 @@ def _span_expr(text):
         return last
 
     def paren_expr(begin):
-        end = parens[begin]
+        end = _PARENS[begin]
         while True:
             t = next(tokens)
-            if t.string == end:
+            if t.exact_type == end:
                 return t
-            if t.string in parens:
-                paren_expr(t.string)
-
-    parens = {"(": ")", "[": "]", "{": "}"}
+            if t.exact_type in _PARENS:
+                paren_expr(t.exact_type)
 
     tokens = _tokenize(text)
     t = next(tokens)
@@ -466,8 +467,8 @@ def _span_expr(text):
     # get the last token of the expression
     if t.exact_type == token.LSQB:
         raise ParseError("Unsupported `$[]` interpolation expression; use `$()` or `${}`")
-    elif t.string in parens:
-        last = paren_expr(t.string)
+    elif t.exact_type in _PARENS:
+        last = paren_expr(t.exact_type)
     elif t.type == token.NAME:
         last = extended_expr(t)  # inlined `simple_expr`
     else:
